@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, AlertCircle, Loader2, Video } from 'lucide-react';
+import { Camera, AlertCircle, Loader2, Video, SwitchCamera } from 'lucide-react';
 // import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob } from '@/lib/ai-model';
 import { verifyWithWorldID, isWorldApp } from '@/lib/worldid';
 import { PotholeReport } from '@/types/report';
 import { cn } from '@/lib/utils';
+
+type CameraFacing = 'user' | 'environment';
 
 export default function Dashcam() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -13,6 +15,7 @@ export default function Dashcam() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cameraInitializing, setCameraInitializing] = useState(false);
+  const [facingMode, setFacingMode] = useState<CameraFacing>('environment');
 
   // Auto-start camera when component mounts
   useEffect(() => {
@@ -25,14 +28,14 @@ export default function Dashcam() {
   }, []);
 
   // Start camera stream
-  const startCamera = async () => {
+  const startCamera = async (facing: CameraFacing = facingMode) => {
     setCameraInitializing(true);
     setError(null);
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment', // Use back camera on mobile
+          facingMode: facing,
           width: { ideal: 1920 },
           height: { ideal: 1080 },
         },
@@ -48,6 +51,18 @@ export default function Dashcam() {
       setCameraInitializing(false);
       console.error('Camera error:', err);
     }
+  };
+
+  // Switch between front and back camera
+  const switchCamera = async () => {
+    const newFacingMode: CameraFacing = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(newFacingMode);
+    
+    // Stop current stream
+    stopCamera();
+    
+    // Start new stream with different camera
+    await startCamera(newFacingMode);
   };
 
   // Stop camera stream
@@ -202,8 +217,20 @@ export default function Dashcam() {
           className="w-full h-full object-cover"
         />
 
+        {/* Switch Camera Button */}
+        {isStreaming && (
+          <button
+            onClick={switchCamera}
+            disabled={cameraInitializing}
+            className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full hover:bg-black/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-10"
+            aria-label="Switch camera"
+          >
+            <SwitchCamera className="w-6 h-6" />
+          </button>
+        )}
+
         {/* Status Overlay */}
-        <div className="absolute top-4 left-4 right-4 flex flex-col gap-2">
+        <div className="absolute top-4 left-4 right-16 flex flex-col gap-2">
           {cameraInitializing && (
             <div className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -221,7 +248,9 @@ export default function Dashcam() {
           {isStreaming && !error && (
             <div className="bg-green-500/90 text-white px-4 py-2 rounded-lg flex items-center gap-2">
               <Video className="w-5 h-5" />
-              <span className="font-medium">Camera Active</span>
+              <span className="font-medium">
+                {facingMode === 'environment' ? 'Back Camera' : 'Front Camera'}
+              </span>
             </div>
           )}
         </div>
@@ -231,7 +260,7 @@ export default function Dashcam() {
       <div className="bg-gray-900 p-4 space-y-3">
         {!isStreaming && !cameraInitializing ? (
           <button
-            onClick={startCamera}
+            onClick={() => startCamera()}
             className="w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
           >
             <Camera className="w-6 h-6" />
