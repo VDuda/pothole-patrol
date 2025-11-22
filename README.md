@@ -98,7 +98,44 @@ bun install
 bun dev
 ```
 
-Open `http://localhost:3000` in your browser (or the World App Simulator).
+Open `http://localhost:3000` in your browser.
+
+### Testing with World App (Mobile)
+
+To test the Mini App on your actual phone with World App, you need to expose your local server via HTTPS using **ngrok**:
+
+#### Quick Setup
+
+1. **Install ngrok:**
+   ```bash
+   # macOS
+   brew install ngrok/ngrok/ngrok
+   
+   # Or download from https://ngrok.com/download
+   ```
+
+2. **Start ngrok tunnel:**
+   ```bash
+   # In a new terminal window
+   ngrok http 3000
+   ```
+
+3. **Copy the HTTPS URL:**
+   ```
+   Forwarding: https://abc123.ngrok-free.app -> http://localhost:3000
+   ```
+
+4. **Update World App settings:**
+   - Go to [developer.worldcoin.org](https://developer.worldcoin.org/)
+   - Update your App URL to the ngrok HTTPS URL
+   - Update Redirect URI to `https://abc123.ngrok-free.app/dashcam`
+
+5. **Scan QR code with World App:**
+   - Generate QR code with your App ID
+   - Scan with World App
+   - Your Mini App will open!
+
+**📖 Full ngrok guide:** See [NGROK_SETUP.md](./NGROK_SETUP.md) for detailed instructions, troubleshooting, and best practices.
 
 ---
 

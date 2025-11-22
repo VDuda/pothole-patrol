@@ -77,20 +77,40 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Step 5: Test the Application
+## Step 5: Set Up Ngrok (For Mobile Testing)
 
-### Testing the Dashcam (Mobile)
+To test the Mini App on your phone with World App, you need HTTPS. Use ngrok to expose your local server:
+
+```bash
+# Install ngrok
+brew install ngrok/ngrok/ngrok
+
+# In a NEW terminal window (keep bun dev running)
+ngrok http 3000
+```
+
+Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`) and:
+1. Update your World App settings at [developer.worldcoin.org](https://developer.worldcoin.org/)
+2. Set App URL to your ngrok URL
+3. Set Redirect URI to `https://abc123.ngrok-free.app/dashcam`
+
+**📖 See [NGROK_SETUP.md](./NGROK_SETUP.md) for detailed instructions.**
+
+## Step 6: Test the Application
+
+### Testing the Dashcam (Desktop Browser)
 1. Navigate to `/dashcam`
 2. Allow camera permissions
 3. Point camera at road/pothole images
 4. Click "Start Detection"
 5. When pothole detected, click "Report Pothole"
 
-### Testing World ID (World App)
+### Testing World ID (World App on Mobile)
 1. Install [World App](https://worldcoin.org/download) on mobile
-2. Open the Mini App in World App
-3. Complete verification flow
-4. Submit report
+2. Scan QR code with your ngrok URL
+3. Open the Mini App in World App
+4. Complete verification flow
+5. Submit report
 
 ### Testing the Portal (Desktop)
 1. Navigate to `/portal`
