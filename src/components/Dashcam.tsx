@@ -1,21 +1,45 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, AlertCircle, Loader2, Video, SwitchCamera } from 'lucide-react';
+import { Camera, AlertCircle, Loader2, Video, SwitchCamera, Wifi, Globe } from 'lucide-react';
+import Hls from 'hls.js';
 // import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob } from '@/lib/ai-model';
 import { verifyWithWorldID, isWorldApp } from '@/lib/worldid';
 import { PotholeReport } from '@/types/report';
 import { cn } from '@/lib/utils';
 
 type CameraFacing = 'user' | 'environment';
+type VideoSourceType = 'device' | 'network';
+
+interface VideoSource {
+  type: VideoSourceType;
+  facingMode?: CameraFacing;
+  url?: string;
+  name?: string;
+}
+
+interface ConnectionStatus {
+  dashcam: boolean;
+  internet: boolean;
+}
 
 export default function Dashcam() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cameraInitializing, setCameraInitializing] = useState(false);
-  const [facingMode, setFacingMode] = useState<CameraFacing>('environment');
+  const [videoSource, setVideoSource] = useState<VideoSource>({
+    type: 'device',
+    facingMode: 'environment'
+  });
+  const [showSourceSelector, setShowSourceSelector] = useState(false);
+  const [networkUrl, setNetworkUrl] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
+    dashcam: false,
+    internet: true
+  });
 
   // Auto-start camera when component mounts
   useEffect(() => {
@@ -27,24 +51,46 @@ export default function Dashcam() {
     };
   }, []);
 
-  // Start camera stream
-  const startCamera = async (facing: CameraFacing = facingMode) => {
+  // Check internet connectivity
+  useEffect(() => {
+    const checkInternet = async () => {
+      try {
+        await fetch('https://www.google.com/favicon.ico', { method: 'HEAD', mode: 'no-cors' });
+        setConnectionStatus(prev => ({ ...prev, internet: true }));
+      } catch {
+        setConnectionStatus(prev => ({ ...prev, internet: false }));
+      }
+    };
+    
+    checkInternet();
+    const interval = setInterval(checkInternet, 10000); // Check every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Start camera stream (device or network)
+  const startCamera = async () => {
     setCameraInitializing(true);
     setError(null);
     
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: facing,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-      });
+      if (videoSource.type === 'device') {
+        // Phone camera
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: videoSource.facingMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        });
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setIsStreaming(true);
-        setCameraInitializing(false);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          setIsStreaming(true);
+          setCameraInitializing(false);
+        }
+      } else if (videoSource.type === 'network' && videoSource.url) {
+        // Network dashcam
+        await connectToNetworkCamera(videoSource.url);
       }
     } catch (err) {
       setError('Camera access denied. Please enable camera permissions in your browser settings.');
@@ -53,26 +99,116 @@ export default function Dashcam() {
     }
   };
 
+  // Connect to network camera (WiFi dashcam)
+  const connectToNetworkCamera = async (url: string) => {
+    if (!videoRef.current) return;
+
+    try {
+      // Check if URL is HLS stream (.m3u8)
+      if (url.includes('.m3u8') && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(videoRef.current);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setIsStreaming(true);
+          setCameraInitializing(false);
+          setConnectionStatus(prev => ({ ...prev, dashcam: true }));
+        });
+        
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          console.error('HLS error:', data);
+          setError(`Network camera error: ${data.type}`);
+          setCameraInitializing(false);
+          setConnectionStatus(prev => ({ ...prev, dashcam: false }));
+        });
+        
+        hlsRef.current = hls;
+      } else {
+        // Direct video URL (MJPEG, MP4, etc.)
+        videoRef.current.src = url;
+        videoRef.current.onloadedmetadata = () => {
+          setIsStreaming(true);
+          setCameraInitializing(false);
+          setConnectionStatus(prev => ({ ...prev, dashcam: true }));
+        };
+        videoRef.current.onerror = () => {
+          setError('Failed to connect to network camera');
+          setCameraInitializing(false);
+          setConnectionStatus(prev => ({ ...prev, dashcam: false }));
+        };
+      }
+    } catch (err) {
+      setError('Failed to connect to network camera');
+      setCameraInitializing(false);
+      console.error('Network camera error:', err);
+    }
+  };
+
   // Switch between front and back camera
   const switchCamera = async () => {
-    const newFacingMode: CameraFacing = facingMode === 'environment' ? 'user' : 'environment';
-    setFacingMode(newFacingMode);
+    if (videoSource.type !== 'device') return;
+    
+    const newFacingMode: CameraFacing = videoSource.facingMode === 'environment' ? 'user' : 'environment';
+    setVideoSource({
+      type: 'device',
+      facingMode: newFacingMode
+    });
     
     // Stop current stream
     stopCamera();
     
     // Start new stream with different camera
-    await startCamera(newFacingMode);
+    setTimeout(() => startCamera(), 100);
   };
 
   // Stop camera stream
   const stopCamera = () => {
+    // Stop device camera
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach((track) => track.stop());
       videoRef.current.srcObject = null;
-      setIsStreaming(false);
     }
+    
+    // Stop HLS stream
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    
+    // Clear video src
+    if (videoRef.current) {
+      videoRef.current.src = '';
+    }
+    
+    setIsStreaming(false);
+    setConnectionStatus(prev => ({ ...prev, dashcam: false }));
+  };
+
+  // Handle video source change
+  const handleSourceChange = (type: VideoSourceType) => {
+    stopCamera();
+    
+    if (type === 'device') {
+      setVideoSource({ type: 'device', facingMode: 'environment' });
+      setShowSourceSelector(false);
+      setTimeout(() => startCamera(), 100);
+    } else {
+      setVideoSource({ type: 'network', url: '' });
+      setShowSourceSelector(false);
+    }
+  };
+
+  // Connect to network camera with URL
+  const handleNetworkConnect = () => {
+    if (!networkUrl.trim()) {
+      setError('Please enter a valid camera URL');
+      return;
+    }
+    
+    setVideoSource({ type: 'network', url: networkUrl });
+    setTimeout(() => startCamera(), 100);
   };
 
   // Capture frame from video
@@ -217,17 +353,29 @@ export default function Dashcam() {
           className="w-full h-full object-cover"
         />
 
-        {/* Switch Camera Button */}
-        {isStreaming && (
+        {/* Action Buttons */}
+        <div className="absolute top-4 right-4 flex gap-2 z-10">
+          {/* Source Selector Button */}
           <button
-            onClick={switchCamera}
-            disabled={cameraInitializing}
-            className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full hover:bg-black/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-10"
-            aria-label="Switch camera"
+            onClick={() => setShowSourceSelector(!showSourceSelector)}
+            className="bg-black/50 backdrop-blur-sm text-white p-3 rounded-full hover:bg-black/70 transition-colors"
+            aria-label="Select video source"
           >
-            <SwitchCamera className="w-6 h-6" />
+            <Camera className="w-6 h-6" />
           </button>
-        )}
+          
+          {/* Switch Camera Button (only for device cameras) */}
+          {isStreaming && videoSource.type === 'device' && (
+            <button
+              onClick={switchCamera}
+              disabled={cameraInitializing}
+              className="bg-black/50 backdrop-blur-sm text-white p-3 rounded-full hover:bg-black/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Switch camera"
+            >
+              <SwitchCamera className="w-6 h-6" />
+            </button>
+          )}
+        </div>
 
         {/* Status Overlay */}
         <div className="absolute top-4 left-4 right-16 flex flex-col gap-2">
@@ -247,13 +395,106 @@ export default function Dashcam() {
 
           {isStreaming && !error && (
             <div className="bg-green-500/90 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-              <Video className="w-5 h-5" />
-              <span className="font-medium">
-                {facingMode === 'environment' ? 'Back Camera' : 'Front Camera'}
-              </span>
+              {videoSource.type === 'device' ? (
+                <>
+                  <Video className="w-5 h-5" />
+                  <span className="font-medium">
+                    {videoSource.facingMode === 'environment' ? 'Back Camera' : 'Front Camera'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Wifi className="w-5 h-5" />
+                  <span className="font-medium">WiFi Dashcam</span>
+                </>
+              )}
+            </div>
+          )}
+          
+          {/* Connection Status */}
+          {videoSource.type === 'network' && (
+            <div className="flex gap-2">
+              <div className={cn(
+                "px-3 py-1 rounded-lg text-xs flex items-center gap-1",
+                connectionStatus.dashcam ? "bg-green-500/90 text-white" : "bg-gray-500/90 text-white"
+              )}>
+                <Wifi className="w-4 h-4" />
+                {connectionStatus.dashcam ? 'Connected' : 'Disconnected'}
+              </div>
+              <div className={cn(
+                "px-3 py-1 rounded-lg text-xs flex items-center gap-1",
+                connectionStatus.internet ? "bg-green-500/90 text-white" : "bg-yellow-500/90 text-black"
+              )}>
+                <Globe className="w-4 h-4" />
+                {connectionStatus.internet ? 'Online' : 'Offline'}
+              </div>
             </div>
           )}
         </div>
+        
+        {/* Source Selector Modal */}
+        {showSourceSelector && (
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-20 p-4">
+            <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full space-y-4">
+              <h3 className="text-xl font-bold text-white">Select Video Source</h3>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleSourceChange('device')}
+                  className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-3 transition-colors"
+                >
+                  <Camera className="w-6 h-6" />
+                  <div className="text-left">
+                    <div className="font-bold">Phone Camera</div>
+                    <div className="text-sm opacity-80">Use your phone's camera</div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleSourceChange('network')}
+                  className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-3 transition-colors"
+                >
+                  <Wifi className="w-6 h-6" />
+                  <div className="text-left">
+                    <div className="font-bold">WiFi Dashcam</div>
+                    <div className="text-sm opacity-80">Connect to network camera</div>
+                  </div>
+                </button>
+              </div>
+              
+              {videoSource.type === 'network' && (
+                <div className="space-y-3 pt-3 border-t border-gray-700">
+                  <input
+                    type="text"
+                    value={networkUrl}
+                    onChange={(e) => setNetworkUrl(e.target.value)}
+                    placeholder="http://192.168.1.1:8080/video.m3u8"
+                    className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none"
+                  />
+                  <div className="text-xs text-gray-400 space-y-1">
+                    <div>• HLS streams (.m3u8)</div>
+                    <div>• MJPEG streams</div>
+                    <div>• Direct video URLs</div>
+                  </div>
+                  <button
+                    onClick={handleNetworkConnect}
+                    disabled={!networkUrl.trim()}
+                    className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-bold transition-colors"
+                  >
+                    Connect
+                  </button>
+                </div>
+              )}
+              
+              <button
+                onClick={() => setShowSourceSelector(false)}
+                className="w-full py-2 text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Controls */}
