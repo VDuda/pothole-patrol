@@ -160,8 +160,36 @@ export default function Dashcam() {
 
       // Verify with World ID (if in World App)
       let worldIdProof;
+      let isVerified = false;
+      
       if (isWorldApp()) {
-        worldIdProof = await verifyWithWorldID(latitude, longitude, timestamp);
+        try {
+          // Get proof from World ID
+          const verifyData = await verifyWithWorldID(latitude, longitude, timestamp);
+          
+          // Verify proof on server
+          const verifyResponse = await fetch('/api/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(verifyData),
+          });
+          
+          const verifyResult = await verifyResponse.json();
+          
+          if (verifyResult.success) {
+            worldIdProof = verifyData.payload;
+            isVerified = true;
+          } else {
+            throw new Error(verifyResult.error || 'Verification failed on server');
+          }
+        } catch (err: any) {
+          console.error('World ID verification failed:', err);
+          // Continue without verification if user is not in World App
+          // or if verification fails
+          setError(`World ID verification failed: ${err.message}`);
+        }
       }
 
       // Run detection one more time for the captured frame
@@ -187,7 +215,7 @@ export default function Dashcam() {
           boundingBox: detections[0].boundingBox,
         },
         worldId: worldIdProof,
-        status: worldIdProof ? 'verified' : 'pending',
+        status: isVerified ? 'verified' : 'pending',
       };
 
       // Submit to backend

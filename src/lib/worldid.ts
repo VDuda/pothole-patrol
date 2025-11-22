@@ -1,22 +1,13 @@
-import { MiniKit } from '@worldcoin/minikit-js';
+import { MiniKit, VerifyCommandInput, VerificationLevel, ISuccessResult } from '@worldcoin/minikit-js';
 import { ethers } from 'ethers';
 
 /**
- * Initialize World MiniKit
- * @param appId - World App ID from developer portal
- */
-export function initializeMiniKit(appId: string) {
-  if (typeof window === 'undefined') return;
-  
-  MiniKit.install(appId);
-}
-
-/**
  * Generate a signal for World ID verification
+ * Creates a unique hash based on location and timestamp to prevent replay attacks
  * @param latitude - GPS latitude
  * @param longitude - GPS longitude
  * @param timestamp - Unix timestamp
- * @returns Hashed signal
+ * @returns Keccak256 hash of the data
  */
 export function generateSignal(
   latitude: number,
@@ -24,34 +15,48 @@ export function generateSignal(
   timestamp: number
 ): string {
   const data = `${latitude.toFixed(6)}-${longitude.toFixed(6)}-${timestamp}`;
-  return ethers.id(data);
+  return ethers.id(data); // Keccak256 hash
 }
 
 /**
- * Verify a pothole report with World ID
+ * Verify a pothole report with World ID using async command
  * @param latitude - GPS latitude
  * @param longitude - GPS longitude
  * @param timestamp - Unix timestamp
- * @returns World ID verification response
+ * @returns World ID verification payload
  */
 export async function verifyWithWorldID(
   latitude: number,
   longitude: number,
   timestamp: number
 ) {
+  if (!MiniKit.isInstalled()) {
+    throw new Error('MiniKit is not installed. Please open in World App.');
+  }
+
   try {
     const signal = generateSignal(latitude, longitude, timestamp);
     
-    const verifyResponse = await MiniKit.commands.verify({
-      action: 'report-pothole',
+    const verifyPayload: VerifyCommandInput = {
+      action: 'report-pothole', // This must match your action ID in Developer Portal
       signal: signal,
-    });
+      verification_level: VerificationLevel.Orb, // Require Orb verification for highest security
+    };
 
-    if (!verifyResponse) {
-      throw new Error('Verification failed: No response');
+    // Use async command - World App will open a drawer for user confirmation
+    const { finalPayload } = await MiniKit.commandsAsync.verify(verifyPayload);
+
+    if (finalPayload.status === 'error') {
+      console.error('Verification error:', finalPayload);
+      throw new Error(finalPayload.error_code || 'Verification failed');
     }
 
-    return verifyResponse;
+    // Return the success payload for backend verification
+    return {
+      payload: finalPayload as ISuccessResult,
+      action: 'report-pothole',
+      signal: signal,
+    };
   } catch (error) {
     console.error('World ID verification error:', error);
     throw error;
