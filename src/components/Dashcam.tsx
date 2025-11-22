@@ -1,57 +1,52 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
-import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob } from '@/lib/ai-model';
+import { Camera, AlertCircle, Loader2, Video } from 'lucide-react';
+// import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob } from '@/lib/ai-model';
 import { verifyWithWorldID, isWorldApp } from '@/lib/worldid';
 import { PotholeReport } from '@/types/report';
 import { cn } from '@/lib/utils';
 
 export default function Dashcam() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isDetecting, setIsDetecting] = useState(false);
-  const [lastDetection, setLastDetection] = useState<Date | null>(null);
-  const [detectionCount, setDetectionCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const detectionLoopRef = useRef<number | null>(null);
+  const [cameraInitializing, setCameraInitializing] = useState(false);
 
-  // Initialize AI model
+  // Auto-start camera when component mounts
   useEffect(() => {
-    const loadModel = async () => {
-      try {
-        await initializeModel();
-        setIsModelLoaded(true);
-      } catch (err) {
-        setError('Failed to load AI model. Please refresh the page.');
-        console.error(err);
-      }
+    startCamera();
+    
+    // Cleanup on unmount
+    return () => {
+      stopCamera();
     };
-    loadModel();
   }, []);
 
   // Start camera stream
   const startCamera = async () => {
+    setCameraInitializing(true);
+    setError(null);
+    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment', // Use back camera
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          facingMode: 'environment', // Use back camera on mobile
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
       });
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setIsStreaming(true);
-        setError(null);
+        setCameraInitializing(false);
       }
     } catch (err) {
-      setError('Camera access denied. Please enable camera permissions.');
-      console.error(err);
+      setError('Camera access denied. Please enable camera permissions in your browser settings.');
+      setCameraInitializing(false);
+      console.error('Camera error:', err);
     }
   };
 
@@ -65,75 +60,30 @@ export default function Dashcam() {
     }
   };
 
-  // Detection loop
-  useEffect(() => {
-    if (!isStreaming || !isModelLoaded || !isDetecting) return;
+  // Capture frame from video
+  const captureFrame = (): string => {
+    if (!videoRef.current) return '';
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(videoRef.current, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.95);
+  };
 
-    const runDetection = async () => {
-      if (!videoRef.current || !canvasRef.current) return;
-
-      try {
-        const detections = await detectPotholes(videoRef.current, 0.6);
-
-        if (detections.length > 0) {
-          const detection = detections[0]; // Take highest confidence
-          
-          // Draw bounding box
-          const canvas = canvasRef.current;
-          const ctx = canvas.getContext('2d')!;
-          canvas.width = videoRef.current.videoWidth;
-          canvas.height = videoRef.current.videoHeight;
-          
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 4;
-          ctx.strokeRect(
-            detection.boundingBox.x,
-            detection.boundingBox.y,
-            detection.boundingBox.width,
-            detection.boundingBox.height
-          );
-          
-          // Draw label
-          ctx.fillStyle = '#ef4444';
-          ctx.fillRect(
-            detection.boundingBox.x,
-            detection.boundingBox.y - 30,
-            200,
-            30
-          );
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '20px sans-serif';
-          ctx.fillText(
-            `Pothole ${(detection.confidence * 100).toFixed(0)}%`,
-            detection.boundingBox.x + 5,
-            detection.boundingBox.y - 8
-          );
-
-          setLastDetection(new Date());
-          setDetectionCount((prev) => prev + 1);
-        } else {
-          // Clear canvas if no detection
-          const canvas = canvasRef.current;
-          const ctx = canvas.getContext('2d')!;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      } catch (err) {
-        console.error('Detection error:', err);
-      }
-
-      // Continue loop
-      detectionLoopRef.current = requestAnimationFrame(runDetection);
-    };
-
-    runDetection();
-
-    return () => {
-      if (detectionLoopRef.current) {
-        cancelAnimationFrame(detectionLoopRef.current);
-      }
-    };
-  }, [isStreaming, isModelLoaded, isDetecting]);
+  // Convert data URL to Blob
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)![1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  };
 
   // Handle report submission
   const handleReport = async () => {
@@ -154,8 +104,8 @@ export default function Dashcam() {
       const { latitude, longitude } = position.coords;
       const timestamp = Date.now();
 
-      // Capture frame
-      const dataUrl = captureFrame(videoRef.current);
+      // Capture frame from video
+      const dataUrl = captureFrame();
       const blob = dataUrlToBlob(dataUrl);
 
       // Verify with World ID (if in World App)
@@ -192,27 +142,20 @@ export default function Dashcam() {
         }
       }
 
-      // Run detection one more time for the captured frame
-      const img = new Image();
-      img.src = dataUrl;
-      await new Promise((resolve) => {
-        img.onload = resolve;
-      });
-      const detections = await detectPotholes(img, 0.6);
-
-      if (detections.length === 0) {
-        throw new Error('No pothole detected in captured frame');
-      }
-
-      // Create report
+      // Create report (AI detection will be added later)
       const report: PotholeReport = {
         id: `report-${timestamp}`,
         timestamp,
         location: { latitude, longitude },
         image: { dataUrl, blob },
         detection: {
-          confidence: detections[0].confidence,
-          boundingBox: detections[0].boundingBox,
+          confidence: 1.0, // Placeholder - will be from AI model later
+          boundingBox: {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          },
         },
         worldId: worldIdProof,
         status: isVerified ? 'verified' : 'pending',
@@ -233,7 +176,6 @@ export default function Dashcam() {
       }
 
       alert('Report submitted successfully! 🎉');
-      setDetectionCount(0);
     } catch (err: any) {
       setError(err.message || 'Failed to submit report');
       console.error(err);
@@ -251,7 +193,7 @@ export default function Dashcam() {
       </div>
 
       {/* Camera View */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden bg-black">
         <video
           ref={videoRef}
           autoPlay
@@ -259,17 +201,13 @@ export default function Dashcam() {
           muted
           className="w-full h-full object-cover"
         />
-        <canvas
-          ref={canvasRef}
-          className="absolute top-0 left-0 w-full h-full pointer-events-none"
-        />
 
         {/* Status Overlay */}
         <div className="absolute top-4 left-4 right-4 flex flex-col gap-2">
-          {!isModelLoaded && (
-            <div className="bg-yellow-500 text-black px-4 py-2 rounded-lg flex items-center gap-2">
+          {cameraInitializing && (
+            <div className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="font-medium">Loading AI Model...</span>
+              <span className="font-medium">Initializing camera...</span>
             </div>
           )}
 
@@ -280,12 +218,10 @@ export default function Dashcam() {
             </div>
           )}
 
-          {isDetecting && lastDetection && (
-            <div className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              <span className="font-medium">
-                Pothole Detected! ({detectionCount} total)
-              </span>
+          {isStreaming && !error && (
+            <div className="bg-green-500/90 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+              <Video className="w-5 h-5" />
+              <span className="font-medium">Camera Active</span>
             </div>
           )}
         </div>
@@ -293,55 +229,38 @@ export default function Dashcam() {
 
       {/* Controls */}
       <div className="bg-gray-900 p-4 space-y-3">
-        {!isStreaming ? (
+        {!isStreaming && !cameraInitializing ? (
           <button
             onClick={startCamera}
-            disabled={!isModelLoaded}
-            className={cn(
-              'w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2',
-              isModelLoaded
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-            )}
+            className="w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
           >
             <Camera className="w-6 h-6" />
             Start Camera
           </button>
-        ) : (
+        ) : isStreaming ? (
           <>
             <button
-              onClick={() => setIsDetecting(!isDetecting)}
+              onClick={handleReport}
+              disabled={isSubmitting}
               className={cn(
-                'w-full py-4 rounded-lg font-bold text-lg',
-                isDetecting
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-green-600 hover:bg-green-700 text-white'
+                'w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2',
+                isSubmitting
+                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                  : 'bg-purple-600 hover:bg-purple-700 text-white'
               )}
             >
-              {isDetecting ? 'Stop Detection' : 'Start Detection'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  Submitting Report...
+                </>
+              ) : (
+                <>
+                  <Camera className="w-6 h-6" />
+                  Capture & Report Pothole
+                </>
+              )}
             </button>
-
-            {detectionCount > 0 && (
-              <button
-                onClick={handleReport}
-                disabled={isSubmitting}
-                className={cn(
-                  'w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2',
-                  isSubmitting
-                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                )}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>Report Pothole</>
-                )}
-              </button>
-            )}
 
             <button
               onClick={stopCamera}
@@ -350,6 +269,10 @@ export default function Dashcam() {
               Stop Camera
             </button>
           </>
+        ) : (
+          <div className="w-full py-4 text-center text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+          </div>
         )}
       </div>
     </div>
