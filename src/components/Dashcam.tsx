@@ -350,8 +350,8 @@ export default function Dashcam() {
   // Stop Patrol
   const stopPatrol = () => {
     setIsPatrolling(false);
-    if (sessionReports.length > 0 && startTime) {
-      // Save pending session to local history
+    if (startTime) {
+      // Save session to local history (even if empty)
       sessionStore.saveSession(sessionReports, startTime);
       setShowSummary(true);
     }
@@ -899,7 +899,7 @@ export default function Dashcam() {
           <div className="mt-auto space-y-3">
             <button
               onClick={handleBatchSubmit}
-              disabled={isSubmittingBatch}
+              disabled={isSubmittingBatch || sessionReports.length === 0}
               className="w-full py-4 rounded-xl font-bold text-lg bg-white text-asphalt hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 active:scale-[0.99] transition-transform"
             >
               {isSubmittingBatch ? (
