@@ -48,7 +48,7 @@ export async function verifyWithWorldID(
     }
     
     const verifyPayload: VerifyCommandInput = {
-      action: 'report-pothole', // This must match your action ID in Developer Portal
+      action: process.env.NEXT_PUBLIC_WLD_ACTION || 'report-pothole', 
       signal: signal,
       verification_level: VerificationLevel.Orb, // Require Orb verification for highest security
     };
