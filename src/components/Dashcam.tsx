@@ -952,11 +952,14 @@ export default function Dashcam() {
             </button>
             
             <button
-              onClick={() => setShowSummary(false)}
+              onClick={() => {
+                setSessionReports([]);
+                setShowSummary(false);
+              }}
               disabled={isSubmittingBatch}
               className="w-full py-4 rounded-xl font-bold text-sm text-gray-300 hover:text-white transition-colors border border-white/10 hover:bg-white/5"
             >
-              RETURN TO CAMERA
+              START NEW PATROL
             </button>
             
             <button
