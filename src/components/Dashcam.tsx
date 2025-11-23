@@ -80,11 +80,11 @@ export default function Dashcam() {
     }
   };
 
-  // Optimized Detection Loop using requestAnimationFrame
+  // Optimized Detection Loop
   const runDetectionLoop = useCallback(async () => {
     if (!isPatrolling || !videoRef.current || !modelReady || !isStreaming) {
       // If stopped, clear loop
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (animationFrameRef.current) clearTimeout(animationFrameRef.current);
       return;
     }
 
@@ -163,8 +163,8 @@ export default function Dashcam() {
       console.error('Detection error:', err);
     }
 
-    // Schedule next frame
-    animationFrameRef.current = requestAnimationFrame(runDetectionLoop);
+    // Schedule next loop with delay (500ms) to prevent UI freeze
+    animationFrameRef.current = window.setTimeout(runDetectionLoop, 500);
   }, [isPatrolling, modelReady, isStreaming, confidenceThreshold]);
 
   // Start/Stop Loop Effect
@@ -172,11 +172,11 @@ export default function Dashcam() {
     if (isPatrolling && modelReady && isStreaming) {
       runDetectionLoop();
     } else {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (animationFrameRef.current) clearTimeout(animationFrameRef.current);
       setDetections([]);
     }
     return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (animationFrameRef.current) clearTimeout(animationFrameRef.current);
     };
   }, [isPatrolling, modelReady, isStreaming, runDetectionLoop]);
 
