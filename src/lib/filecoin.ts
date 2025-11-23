@@ -17,6 +17,8 @@ export async function uploadToFilecoin(
       : new File([file], `pothole-${Date.now()}.jpg`, { type: 'image/jpeg' });
 
     // Upload to Lighthouse
+    // Note: Lighthouse handles deal making. For hackathons, standard upload often lands on calibration or free tier.
+    // We use the standard upload which is robust.
     const uploadResponse = await lighthouse.upload(
       [fileToUpload],
       apiKey
@@ -62,6 +64,30 @@ export async function uploadMetadataToFilecoin(
   } catch (error) {
     console.error('Metadata upload error:', error);
     throw new Error(`Failed to upload metadata: ${error}`);
+  }
+}
+
+/**
+ * Upload an entire session folder to Filecoin (Virtual Folder via Lighthouse)
+ * This links all report images into a single CID directory.
+ * @param files - Array of Files to upload
+ * @param apiKey - Lighthouse API key
+ */
+export async function uploadSessionFolder(
+  files: File[],
+  apiKey: string
+): Promise<string> {
+  try {
+    const uploadResponse = await lighthouse.upload(files, apiKey);
+    
+    if (!uploadResponse?.data?.Hash) {
+        throw new Error('Session upload failed');
+    }
+    
+    return uploadResponse.data.Hash;
+  } catch (error) {
+    console.error('Session folder upload error:', error);
+    throw error;
   }
 }
 

@@ -20,10 +20,16 @@ let session: ort.InferenceSession | null = null;
 export async function initializeModel(
   modelPath: string = '/models/pothole.onnx'
 ): Promise<void> {
+  if (session) {
+    console.log('YOLO model already loaded');
+    return;
+  }
+
   try {
     // Configure ONNX Runtime for WASM
     // Use the latest compatible version
     ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
+    ort.env.logLevel = 'error'; // Suppress non-critical logs (like CPU vendor warnings)
     
     session = await ort.InferenceSession.create(modelPath, {
       executionProviders: ['wasm'],
@@ -37,6 +43,10 @@ export async function initializeModel(
     // But we set session to null so detectPotholes knows it's not ready
     session = null;
   }
+}
+
+export function isModelLoaded(): boolean {
+  return session !== null;
 }
 
 /**
@@ -149,7 +159,7 @@ function postprocessOutput(
  */
 export async function detectPotholes(
   imageElement: HTMLImageElement | HTMLVideoElement,
-  confidenceThreshold: number = 0.6
+  confidenceThreshold: number = 0.25
 ): Promise<Detection[]> {
   if (!session) {
     throw new Error('Model not initialized. Call initializeModel() first.');
@@ -160,7 +170,11 @@ export async function detectPotholes(
     const inputTensor = preprocessImage(imageElement);
     
     // Run inference
-    const feeds = { images: inputTensor };
+    const feeds: Record<string, ort.Tensor> = {};
+    // Dynamically get the input name (usually 'images' but best to be safe)
+    const inputName = session.inputNames[0];
+    feeds[inputName] = inputTensor;
+    
     const results = await session.run(feeds);
     
     // Get output tensor

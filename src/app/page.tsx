@@ -19,6 +19,10 @@ export default function Home() {
               <span className="text-sm font-mono text-gray-300 tracking-wider">ETHGlobal Buenos Aires 2025</span>
             </div>
             
+            <div className="flex justify-center mb-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
+                <img src="/logo.png" alt="Pothole Patrol Logo" className="w-24 h-24 rounded-2xl shadow-2xl shadow-safety-yellow/20" />
+            </div>
+
             <h1 className="text-6xl md:text-8xl font-bold mb-6 tracking-tight leading-none animate-in fade-in slide-in-from-bottom-8 duration-700 delay-100">
               Pothole <span className="text-transparent bg-clip-text bg-gradient-to-r from-safety-yellow to-yellow-600">Patrol</span>
             </h1>

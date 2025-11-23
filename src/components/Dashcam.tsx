@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Camera, AlertCircle, Loader2, Video, SwitchCamera, Wifi, Globe, MapPin, X, Check, Activity } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Camera, AlertCircle, Loader2, Video, SwitchCamera, Wifi, Globe, MapPin, X, Check, Activity, Settings, RefreshCw, Clock, Trash2, ArrowLeft } from 'lucide-react';
 import Hls from 'hls.js';
 import { verifyWithWorldID, isWorldApp } from '@/lib/worldid';
-import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob } from '@/lib/ai-model';
+import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob, type Detection } from '@/lib/ai-model';
+import { uploadSessionFolder, getIPFSUrl } from '@/lib/filecoin';
+import { sessionStore, type PatrolSession } from '@/lib/session-store';
 import { PotholeReport } from '@/types/report';
 import { cn } from '@/lib/utils';
 import { ethers } from 'ethers';
@@ -26,7 +28,9 @@ interface ConnectionStatus {
 
 export default function Dashcam() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null); // New ref for alignment
   const hlsRef = useRef<Hls | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   
   // Camera State
   const [isStreaming, setIsStreaming] = useState(false);
@@ -37,12 +41,18 @@ export default function Dashcam() {
     facingMode: 'environment'
   });
   const [showSourceSelector, setShowSourceSelector] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [networkUrl, setNetworkUrl] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     dashcam: false,
     internet: true
   });
   const [modelReady, setModelReady] = useState(false);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
+  const [showHistory, setShowHistory] = useState(false);
+  const [patrolHistory, setPatrolHistory] = useState<PatrolSession[]>([]);
+  const [showReview, setShowReview] = useState(false);
 
   // Patrol State
   const [isPatrolling, setIsPatrolling] = useState(false);
@@ -51,91 +61,113 @@ export default function Dashcam() {
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
 
-  // Auto-start camera and load model when component mounts
+  // Initial Model Load
   useEffect(() => {
-    startCamera();
-    
-    // Initialize AI Model
-    const loadModel = async () => {
-      try {
-        await initializeModel();
-        setModelReady(true);
-        console.log('AI Model loaded');
-      } catch (err) {
-        console.error('Failed to load AI model:', err);
-        // We don't block the app, but AI features won't work
-      }
-    };
     loadModel();
-    
-    // Cleanup on unmount
-    return () => {
-      stopCamera();
-    };
+    return () => stopCamera();
   }, []);
 
-  // AI Detection Loop
-  useEffect(() => {
-    let detectionInterval: NodeJS.Timeout;
+  const loadModel = async () => {
+    setModelReady(false);
+    try {
+      await initializeModel();
+      setModelReady(true);
+      console.log('AI Model loaded');
+    } catch (err) {
+      console.error('Failed to load AI model:', err);
+      setError('Failed to load AI model');
+    }
+  };
 
-    const runDetection = async () => {
-      if (!isPatrolling || !videoRef.current || !modelReady || !isStreaming) return;
+  // Optimized Detection Loop using requestAnimationFrame
+  const runDetectionLoop = useCallback(async () => {
+    if (!isPatrolling || !videoRef.current || !modelReady || !isStreaming) {
+      // If stopped, clear loop
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      return;
+    }
 
-      try {
-        const detections = await detectPotholes(videoRef.current);
+    try {
+      // Run inference
+      // Note: detectPotholes is async. We wait for it, then schedule next frame.
+      const currentDetections = await detectPotholes(videoRef.current, confidenceThreshold);
+      
+      setDetections(currentDetections);
+      
+      // Logging Logic (same as before but in this loop)
+      if (currentDetections.length > 0) {
+        const bestDetection = currentDetections.reduce((prev, current) => 
+          (prev.confidence > current.confidence) ? prev : current
+        );
+
+        // Throttle geolocation/report creation to avoid spamming main thread
+        // We only log if we haven't logged recently (debounce done in state setter)
+        // For better performance, we could move this check outside the render loop logic
         
-        if (detections.length > 0) {
-          // Found a pothole!
-          // We only take the highest confidence one for now to avoid spam
-          const bestDetection = detections.reduce((prev, current) => 
-            (prev.confidence > current.confidence) ? prev : current
-          );
-
-          // Get location
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        // Basic timestamp check to see if we should even attempt to log
+        const now = Date.now();
+        // Note: Accessing state in callback requires refs or dependency, but we use functional update for sessionReports
+        // To optimize, we can check a ref for last log time
+        
+        // For MVP, we do the heavy lifting of logging here, but maybe we should debounce it more aggressively
+        // Let's stick to the previous logic which had a 2000ms debounce inside the setter
+        
+        // Optimization: Only get location if we are going to log (check debounce first?)
+        // Hard to check debounce without state access. Let's proceed.
+        
+        // Get location (this is slow, maybe we should track location independently?)
+        // For now, we await it.
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
               enableHighAccuracy: true,
-              timeout: 2000,
+              timeout: 1000, // Lower timeout
             });
-          }).catch(() => null);
+        }).catch(() => null);
 
-          if (position) {
+        if (position) {
             const { latitude, longitude } = position.coords;
-            const timestamp = Date.now();
-            const dataUrl = captureFrame(videoRef.current);
+            const dataUrl = captureFrame(videoRef.current!);
             const blob = dataUrlToBlob(dataUrl);
 
             const newReport: PotholeReport = {
-              id: `report-${timestamp}`,
-              timestamp,
-              location: { latitude, longitude },
-              image: { dataUrl, blob },
-              detection: bestDetection,
-              status: 'pending',
+                id: `report-${now}`,
+                timestamp: now,
+                location: { latitude, longitude },
+                image: { dataUrl, blob },
+                detection: bestDetection,
+                status: 'pending',
             };
 
             setSessionReports(prev => {
-              // Simple de-bouncing: don't add if we just added one < 2 seconds ago
-              const lastReport = prev[prev.length - 1];
-              if (lastReport && (timestamp - lastReport.timestamp < 2000)) {
-                return prev;
-              }
-              return [...prev, newReport];
+                const lastReport = prev[prev.length - 1];
+                if (lastReport && (now - lastReport.timestamp < 2000)) {
+                    return prev;
+                }
+                return [...prev, newReport];
             });
-          }
         }
-      } catch (err) {
-        console.error('Detection loop error:', err);
       }
-    };
-
-    if (isPatrolling && modelReady) {
-      // Run detection every 500ms
-      detectionInterval = setInterval(runDetection, 500);
+    } catch (err) {
+      console.error('Detection error:', err);
     }
 
-    return () => clearInterval(detectionInterval);
-  }, [isPatrolling, modelReady, isStreaming]);
+    // Schedule next frame
+    animationFrameRef.current = requestAnimationFrame(runDetectionLoop);
+  }, [isPatrolling, modelReady, isStreaming, confidenceThreshold]);
+
+  // Start/Stop Loop Effect
+  useEffect(() => {
+    if (isPatrolling && modelReady && isStreaming) {
+      runDetectionLoop();
+    } else {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      setDetections([]);
+    }
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [isPatrolling, modelReady, isStreaming, runDetectionLoop]);
+
 
   // Check internet connectivity
   useEffect(() => {
@@ -160,12 +192,11 @@ export default function Dashcam() {
     
     try {
       if (videoSource.type === 'device') {
-        // Phone camera
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: videoSource.facingMode,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1280 }, // Slightly lower for mobile perf
+            height: { ideal: 720 },
           },
         });
 
@@ -175,11 +206,10 @@ export default function Dashcam() {
           setCameraInitializing(false);
         }
       } else if (videoSource.type === 'network' && videoSource.url) {
-        // Network dashcam
         await connectToNetworkCamera(videoSource.url);
       }
     } catch (err) {
-      setError('Camera access denied. Please enable camera permissions in your browser settings.');
+      setError('Camera access denied.');
       setCameraInitializing(false);
       console.error('Camera error:', err);
     }
@@ -308,7 +338,9 @@ export default function Dashcam() {
   // Stop Patrol
   const stopPatrol = () => {
     setIsPatrolling(false);
-    if (sessionReports.length > 0) {
+    if (sessionReports.length > 0 && startTime) {
+      // Save pending session to local history
+      sessionStore.saveSession(sessionReports, startTime);
       setShowSummary(true);
     }
   };
@@ -370,20 +402,15 @@ export default function Dashcam() {
       // 1. Verify Session with World ID (if in World App)
       if (isWorldApp() && startTime) {
         try {
-          // Create a session signal: hash(startTime + count + firstLocation)
           const firstLoc = sessionReports[0].location;
           const sessionString = `${startTime}-${sessionReports.length}-${firstLoc.latitude.toFixed(4)}`;
           const sessionSignal = ethers.id(sessionString);
 
-          // Get one proof for the entire batch
           const verifyData = await verifyWithWorldID(undefined, undefined, undefined, sessionSignal);
           
-          // Verify proof on server
           const verifyResponse = await fetch('/api/verify', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(verifyData),
           });
           
@@ -403,13 +430,52 @@ export default function Dashcam() {
         }
       }
 
-      // 2. Submit all reports
+      // 2. Upload Session to Filecoin (Lighthouse)
+      let folderCid = '';
+      try {
+        const apiKey = process.env.NEXT_PUBLIC_LIGHTHOUSE_API_KEY;
+        if (!apiKey) throw new Error('Lighthouse API key missing');
+
+        // Prepare files for folder upload
+        const filesToUpload = sessionReports.map((report, index) => {
+            // Recreate file from blob
+            return new File([report.image.blob!], `pothole-${report.timestamp}.jpg`, { type: 'image/jpeg' });
+        });
+
+        // Add metadata file
+        const metadata = {
+            startTime,
+            endTime: Date.now(),
+            count: sessionReports.length,
+            verified: isVerified,
+            worldIdProof
+        };
+        filesToUpload.push(new File([JSON.stringify(metadata, null, 2)], 'session-metadata.json', { type: 'application/json' }));
+
+        folderCid = await uploadSessionFolder(filesToUpload, apiKey);
+        
+        // Update local history
+        if (startTime) {
+            sessionStore.updateSession(`session-${startTime}`, {
+                status: 'uploaded',
+                filecoinCid: folderCid
+            });
+        }
+
+      } catch (err: any) {
+        console.error('Filecoin upload failed:', err);
+        // We continue to submit to backend even if Filecoin fails, but warn user
+        // Or we can stop? Let's log warning but continue to backend.
+        // Actually, let's throw error to alert user, they can retry.
+        throw new Error(`Filecoin upload failed: ${err.message}`);
+      }
+
+      // 3. Submit all reports to Backend API
       let uploadedCount = 0;
       
       for (const report of sessionReports) {
         const formData = new FormData();
         
-        // Attach the session proof to each report
         const reportWithProof = {
           ...report,
           worldId: worldIdProof,
@@ -417,7 +483,8 @@ export default function Dashcam() {
           session: {
             id: startTime,
             index: uploadedCount + 1,
-            total: sessionReports.length
+            total: sessionReports.length,
+            folderCid: folderCid // Link individual report to the session folder
           }
         };
 
@@ -437,7 +504,7 @@ export default function Dashcam() {
       }
 
       if (uploadedCount === sessionReports.length) {
-        alert(`Successfully verified and uploaded ${uploadedCount} reports! 🎉`);
+        alert(`Successfully verified and uploaded ${uploadedCount} reports! Session CID: ${folderCid.slice(0, 8)}...`);
         setSessionReports([]);
         setShowSummary(false);
       } else {
@@ -458,29 +525,42 @@ export default function Dashcam() {
     }
   };
 
+  const handleDeleteReport = (index: number) => {
+    setSessionReports(prev => prev.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="flex flex-col h-[100dvh] bg-asphalt text-white relative overflow-hidden">
       {/* Header */}
       <div className="bg-concrete border-b border-white/5 p-4 flex justify-between items-center z-10 shadow-md">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-safety-yellow rounded-md flex items-center justify-center text-asphalt">
-             <Activity className="w-5 h-5" />
-          </div>
+          <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-md" />
           <div>
             <h1 className="text-lg font-bold font-sans tracking-tight">Pothole Patrol</h1>
             <p className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">AI Dashcam v1.0</p>
           </div>
         </div>
-        {isPatrolling && (
-          <div className="flex items-center gap-2 bg-alert-red/20 border border-alert-red/50 px-3 py-1.5 rounded-full animate-pulse">
-            <div className="w-2 h-2 bg-alert-red rounded-full shadow-[0_0_8px_rgba(255,61,0,0.8)]" />
-            <span className="text-[10px] font-bold text-alert-red uppercase tracking-wider">REC</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+            {isPatrolling && (
+            <div className="flex items-center gap-2 bg-alert-red/20 border border-alert-red/50 px-3 py-1.5 rounded-full animate-pulse">
+                <div className="w-2 h-2 bg-alert-red rounded-full shadow-[0_0_8px_rgba(255,61,0,0.8)]" />
+                <span className="text-[10px] font-bold text-alert-red uppercase tracking-wider">REC</span>
+            </div>
+            )}
+            <button 
+                onClick={() => setShowSettings(true)}
+                className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors"
+            >
+                <Settings className="w-5 h-5 text-gray-400" />
+            </button>
+        </div>
       </div>
 
       {/* Camera View */}
-      <div className="flex-1 relative overflow-hidden bg-black" onClick={isPatrolling ? handleSimulateDetection : undefined}>
+      <div 
+        ref={containerRef}
+        className="flex-1 relative overflow-hidden bg-black w-full" 
+      >
         <video
           ref={videoRef}
           autoPlay
@@ -488,6 +568,29 @@ export default function Dashcam() {
           muted
           className="w-full h-full object-cover"
         />
+
+        {/* AI Bounding Box Overlay */}
+        {isPatrolling && detections.map((det, i) => (
+          <div
+            key={i}
+            className="absolute border-2 border-safety-yellow bg-safety-yellow/20 z-10 pointer-events-none"
+            style={{
+              // NOTE: This logic assumes the video frame is squashed to 640x640 for inference.
+              // The box is relative to that 640x640.
+              // Since video is object-cover, we need to adjust if we want pixel-perfect accuracy.
+              // For MVP, simpler % mapping is acceptable but may drift on cropped edges.
+              // To improve, we'd need JS math to calculate the 'cover' crop rect.
+              left: `${(det.boundingBox.x / 640) * 100}%`,
+              top: `${(det.boundingBox.y / 640) * 100}%`,
+              width: `${(det.boundingBox.width / 640) * 100}%`,
+              height: `${(det.boundingBox.height / 640) * 100}%`,
+            }}
+          >
+            <div className="absolute -top-5 left-0 bg-safety-yellow text-black text-[10px] font-bold px-1 rounded">
+              {(det.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+        ))}
 
         {/* Source Selector & Switch Camera */}
         <div className="absolute top-4 right-4 flex flex-col gap-3 z-10">
@@ -514,7 +617,9 @@ export default function Dashcam() {
            {/* Patrolling Stats */}
            {isPatrolling && (
             <div className="bg-asphalt/80 backdrop-blur-md text-white px-4 py-3 rounded-xl border border-white/10 shadow-lg w-fit">
-              <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-mono">Session Potholes</div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-mono">
+                {modelReady ? 'AI Scanning...' : 'Manual Mode'}
+              </div>
               <div className="flex items-center gap-3">
                 <MapPin className="w-5 h-5 text-safety-yellow" />
                 <span className="text-3xl font-bold font-mono tracking-tighter">{sessionReports.length}</span>
@@ -527,6 +632,13 @@ export default function Dashcam() {
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-xs font-medium font-mono">INIT_CAMERA...</span>
             </div>
+          )}
+
+          {!modelReady && !cameraInitializing && (
+             <div className="bg-asphalt/80 backdrop-blur-sm text-white px-4 py-2 rounded-lg flex items-center gap-2 w-fit border border-white/10">
+               <Loader2 className="w-3 h-3 animate-spin text-safety-yellow" />
+               <span className="text-[10px] font-medium font-mono text-gray-300">LOADING_AI_MODEL...</span>
+             </div>
           )}
           
           {error && (
@@ -541,7 +653,7 @@ export default function Dashcam() {
         {isPatrolling && sessionReports.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="bg-asphalt/60 px-6 py-3 rounded-full text-white/90 text-sm font-medium backdrop-blur-md border border-white/10 animate-pulse">
-              Tap screen to simulate detection
+              {modelReady ? 'AI Active • Point at Potholes' : 'Tap screen to simulate detection'}
             </div>
           </div>
         )}
@@ -558,17 +670,10 @@ export default function Dashcam() {
             ENABLE CAMERA
           </button>
         ) : isPatrolling ? (
-          <div className="flex gap-3">
-             <button
-              onClick={handleSimulateDetection}
-              className="flex-1 py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 bg-asphalt text-safety-yellow border border-safety-yellow/30 active:scale-[0.98] transition-transform"
-            >
-              <AlertCircle className="w-5 h-5" />
-              MARK (+1)
-            </button>
+          <div className="w-full">
             <button
               onClick={stopPatrol}
-              className="flex-[2] py-4 rounded-xl font-bold text-base flex items-center justify-center gap-3 bg-alert-red text-white active:scale-[0.98] transition-transform shadow-lg shadow-alert-red/20"
+              className="w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-3 bg-alert-red text-white active:scale-[0.98] transition-transform shadow-lg shadow-alert-red/20"
             >
               <div className="w-3 h-3 bg-white rounded-sm" />
               STOP PATROL
@@ -577,13 +682,145 @@ export default function Dashcam() {
         ) : (
           <button
             onClick={startPatrol}
-            className="w-full py-4 rounded-xl font-bold text-xl flex items-center justify-center gap-3 bg-safety-yellow text-asphalt active:scale-[0.98] transition-transform shadow-lg shadow-safety-yellow/20"
+            disabled={!modelReady && !isPatrolling} // Optional: disable if strictly requiring AI, but manual is fine too. Let's keep it enabled but show loading status above.
+            className={cn(
+              "w-full py-4 rounded-xl font-bold text-xl flex items-center justify-center gap-3 transition-transform shadow-lg",
+              modelReady 
+                ? "bg-safety-yellow text-asphalt active:scale-[0.98] shadow-safety-yellow/20" 
+                : "bg-gray-700 text-gray-400 cursor-wait"
+            )}
           >
-            <div className="w-3 h-3 bg-alert-red rounded-full animate-pulse" />
-            START PATROL
+            {modelReady ? (
+              <>
+                <div className="w-3 h-3 bg-alert-red rounded-full animate-pulse" />
+                START PATROL
+              </>
+            ) : (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                LOADING AI...
+              </>
+            )}
           </button>
         )}
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in">
+            <div className="bg-concrete rounded-2xl p-6 max-w-sm w-full space-y-6 border border-white/10 shadow-2xl">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-white">Settings</h3>
+                    <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-white">
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-300">AI Model Status</label>
+                        <div className={cn("px-3 py-2 rounded-lg text-sm flex items-center gap-2", modelReady ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>
+                            <Activity className="w-4 h-4" />
+                            {modelReady ? 'Ready (YOLOv8n-FineTuned)' : 'Not Loaded'}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex justify-between">
+                            <label className="text-sm font-medium text-gray-300">Confidence Threshold</label>
+                            <span className="text-sm text-safety-yellow font-mono">{(confidenceThreshold * 100).toFixed(0)}%</span>
+                        </div>
+                        <input 
+                            type="range" 
+                            min="0.1" 
+                            max="0.9" 
+                            step="0.05"
+                            value={confidenceThreshold}
+                            onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))}
+                            className="w-full accent-safety-yellow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                        />
+                    </div>
+
+                    <button 
+                        onClick={() => { loadModel(); setShowSettings(false); }}
+                        className="w-full py-3 bg-asphalt border border-white/10 hover:border-white/30 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        RELOAD AI MODEL
+                    </button>
+
+                    <div className="pt-4 border-t border-white/10">
+                        <button 
+                            onClick={() => { setShowSettings(false); setShowHistory(true); setPatrolHistory(sessionStore.getSessions()); }}
+                            className="w-full py-3 bg-concrete border border-white/10 hover:bg-white/5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors text-gray-300"
+                        >
+                            <Clock className="w-4 h-4" />
+                            VIEW PATROL HISTORY
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {showHistory && (
+        <div className="absolute inset-0 bg-asphalt z-50 flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="bg-concrete border-b border-white/10 p-4 flex items-center gap-3 shadow-lg">
+                <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <X className="w-6 h-6 text-white" />
+                </button>
+                <h2 className="text-lg font-bold text-white">Patrol History</h2>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {patrolHistory.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500">
+                        <Clock className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                        <p>No patrol history found.</p>
+                    </div>
+                ) : (
+                    patrolHistory.map((session) => (
+                        <div key={session.id} className="bg-concrete border border-white/5 rounded-xl p-4 space-y-3">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="text-sm font-bold text-white">
+                                        {new Date(session.startTime).toLocaleDateString()}
+                                    </p>
+                                    <p className="text-xs text-gray-400 font-mono">
+                                        {new Date(session.startTime).toLocaleTimeString()} • {Math.round((session.endTime - session.startTime) / 1000 / 60)} min
+                                    </p>
+                                </div>
+                                <div className={cn("px-2 py-1 rounded text-[10px] font-bold uppercase", 
+                                    session.status === 'uploaded' ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"
+                                )}>
+                                    {session.status.replace('_', ' ')}
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-4 text-sm text-gray-300">
+                                <div className="flex items-center gap-2">
+                                    <MapPin className="w-4 h-4 text-safety-yellow" />
+                                    <span>{session.potholeCount} Potholes</span>
+                                </div>
+                            </div>
+
+                            {session.filecoinCid && (
+                                <a 
+                                    href={getIPFSUrl(session.filecoinCid)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block w-full py-2 bg-white/5 hover:bg-white/10 rounded-lg text-center text-xs font-mono text-blue-400 transition-colors border border-blue-500/20"
+                                >
+                                    VIEW EVIDENCE (IPFS)
+                                </a>
+                            )}
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+      )}
 
       {/* Trip Summary Modal */}
       {showSummary && (
@@ -602,10 +839,16 @@ export default function Dashcam() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
-              <div className="bg-concrete p-5 rounded-2xl border border-white/5">
-                <div className="text-4xl font-bold text-safety-yellow mb-1 font-mono tracking-tighter">{sessionReports.length}</div>
-                <div className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Potholes</div>
-              </div>
+              <button 
+                onClick={() => setShowReview(true)}
+                disabled={sessionReports.length === 0}
+                className="bg-concrete p-5 rounded-2xl border border-white/5 hover:bg-white/5 transition-colors text-left group"
+              >
+                <div className="text-4xl font-bold text-safety-yellow mb-1 font-mono tracking-tighter group-hover:scale-105 transition-transform">{sessionReports.length}</div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-widest font-bold flex items-center gap-1">
+                    Potholes <ArrowLeft className="w-3 h-3 rotate-180" />
+                </div>
+              </button>
               <div className="bg-concrete p-5 rounded-2xl border border-white/5">
                 <div className="text-4xl font-bold text-white mb-1 font-mono tracking-tighter">
                   {startTime ? Math.round((Date.now() - startTime) / 1000 / 60) : 0}
@@ -651,6 +894,68 @@ export default function Dashcam() {
               DISCARD REPORTS
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Review Session Modal */}
+      {showReview && (
+        <div className="absolute inset-0 z-[60] bg-asphalt flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="bg-concrete border-b border-white/10 p-4 flex items-center gap-3 shadow-lg sticky top-0 z-10">
+                <button onClick={() => setShowReview(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <ArrowLeft className="w-6 h-6 text-white" />
+                </button>
+                <div>
+                    <h2 className="text-lg font-bold text-white">Review Session</h2>
+                    <p className="text-xs text-gray-400">{sessionReports.length} items pending upload</p>
+                </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {sessionReports.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500">
+                        <p>No reports remaining.</p>
+                    </div>
+                ) : (
+                    sessionReports.map((report, index) => (
+                        <div key={report.id} className="bg-concrete border border-white/5 rounded-xl overflow-hidden">
+                            {/* Image Header */}
+                            <div className="relative h-48 bg-black">
+                                <img 
+                                    src={report.image.dataUrl} 
+                                    alt="Evidence" 
+                                    className="w-full h-full object-cover"
+                                />
+                                <div className="absolute top-2 right-2 bg-black/70 text-safety-yellow px-2 py-1 rounded text-xs font-bold border border-safety-yellow/30">
+                                    {(report.detection.confidence * 100).toFixed(0)}% Confidence
+                                </div>
+                            </div>
+                            
+                            {/* Content */}
+                            <div className="p-4">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <p className="text-xs text-gray-400 font-mono uppercase tracking-wider mb-1">Detected At</p>
+                                        <p className="text-sm text-white font-medium">
+                                            {new Date(report.timestamp).toLocaleTimeString()}
+                                        </p>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleDeleteReport(index)}
+                                        className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                
+                                <div className="flex items-center gap-2 text-xs text-gray-500 font-mono bg-black/20 p-2 rounded-lg">
+                                    <MapPin className="w-3 h-3" />
+                                    {report.location.latitude.toFixed(6)}, {report.location.longitude.toFixed(6)}
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
         </div>
       )}
 
