@@ -54,8 +54,7 @@ export default function Dashcam() {
   const [showHistory, setShowHistory] = useState(false);
   const [patrolHistory, setPatrolHistory] = useState<PatrolSession[]>([]);
   const [showReview, setShowReview] = useState(false);
-  const [walletAddress, setWalletAddress] = useState('');
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [manualBox, setManualBox] = useState<{x: number, y: number} | null>(null);
 
   // Patrol State
   const [isPatrolling, setIsPatrolling] = useState(false);
@@ -189,6 +188,56 @@ export default function Dashcam() {
     // Schedule next loop with delay (500ms) to prevent UI freeze
     animationFrameRef.current = window.setTimeout(runDetectionLoop, 500);
   }, [isPatrolling, modelReady, isStreaming, confidenceThreshold]);
+
+  // Secret Manual Capture
+  const handleManualClick = async (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isPatrolling || !videoRef.current) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Show feedback box
+    setManualBox({ x, y });
+    setTimeout(() => setManualBox(null), 500);
+
+    // Capture logic
+    try {
+        const now = Date.now();
+        const dataUrl = captureFrame(videoRef.current);
+        const blob = dataUrlToBlob(dataUrl);
+        
+        // Get location (fast fallback if needed)
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                addReport(now, latitude, longitude, dataUrl, blob);
+            },
+            () => {
+                // Fallback coordinates
+                 addReport(now, -34.590706, -58.395948, dataUrl, blob);
+            },
+            { timeout: 1000 }
+        );
+    } catch (err) {
+        console.error('Manual capture failed', err);
+    }
+  };
+
+  const addReport = (timestamp: number, latitude: number, longitude: number, dataUrl: string, blob: Blob) => {
+     const newReport: PotholeReport = {
+        id: `report-manual-${timestamp}`,
+        timestamp,
+        location: { latitude, longitude },
+        image: { dataUrl, blob },
+        detection: {
+          confidence: 1.0, // Manual = 100% confidence
+          boundingBox: { x: 0, y: 0, width: 0, height: 0 }, // No real bbox for manual
+        },
+        status: 'pending',
+    };
+    setSessionReports(prev => [...prev, newReport]);
+  };
 
   // Start/Stop Loop Effect
   useEffect(() => {
@@ -608,6 +657,7 @@ export default function Dashcam() {
       <div 
         ref={containerRef}
         className="flex-1 relative overflow-hidden bg-black w-full" 
+        onClick={handleManualClick}
       >
         <video
           ref={videoRef}
@@ -616,6 +666,19 @@ export default function Dashcam() {
           muted
           className="w-full h-full object-cover"
         />
+
+        {/* Manual Tap Feedback */}
+        {manualBox && (
+             <div 
+                className="absolute border-2 border-safety-yellow bg-safety-yellow/30 z-20 pointer-events-none rounded-lg animate-out fade-out duration-500"
+                style={{
+                    left: manualBox.x - 50,
+                    top: manualBox.y - 50,
+                    width: 100,
+                    height: 100,
+                }}
+             />
+        )}
 
         {/* AI Bounding Box Overlay - HIDDEN as per user request to check efficiency */}
         {/* {isPatrolling && detections.map((det, i) => (
