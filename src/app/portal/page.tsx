@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, Database, Activity, Check, Clock, Upload } from 'lucide-react';
+import Link from 'next/link';
 import Map from '@/components/Map';
 import ReportCard from '@/components/ReportCard';
 import { PotholeReport, JSONLDDataset } from '@/types/report';
@@ -150,13 +151,13 @@ export default function PortalPage() {
       {/* Header */}
       <div className="bg-concrete border-b border-white/5 p-4 shadow-lg z-20">
         <div className="max-w-[1920px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
              <img src="/logo.png" alt="Logo" className="w-10 h-10 rounded-lg shadow-lg shadow-yellow-500/20" />
              <div>
                 <h1 className="text-xl font-bold tracking-tight">Pothole Patrol</h1>
                 <p className="text-xs text-gray-400 font-mono uppercase tracking-wider">Open Data Portal</p>
              </div>
-          </div>
+          </Link>
           
           <div className="flex items-center gap-3">
             <button

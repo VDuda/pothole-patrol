@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Camera, AlertCircle, Loader2, Video, SwitchCamera, Wifi, Globe, MapPin, X, Check, Activity, Settings, RefreshCw, Clock, Trash2, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 import Hls from 'hls.js';
 import { verifyWithWorldID, isWorldApp } from '@/lib/worldid';
 import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob, type Detection } from '@/lib/ai-model';
@@ -560,13 +561,13 @@ export default function Dashcam() {
     <div className="flex flex-col h-[100dvh] bg-asphalt text-white relative overflow-hidden">
       {/* Header */}
       <div className="bg-concrete border-b border-white/5 p-4 flex justify-between items-center z-10 shadow-md">
-        <div className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
           <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-md" />
           <div>
             <h1 className="text-lg font-bold font-sans tracking-tight">Pothole Patrol</h1>
             <p className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">AI Dashcam v1.0</p>
           </div>
-        </div>
+        </Link>
         <div className="flex items-center gap-2">
             {isPatrolling && (
             <div className="flex items-center gap-2 bg-alert-red/20 border border-alert-red/50 px-3 py-1.5 rounded-full animate-pulse">
