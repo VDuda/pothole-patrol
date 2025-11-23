@@ -11,7 +11,7 @@ const reports: PotholeReport[] = [
     detection: { confidence: 0.92, boundingBox: { x: 100, y: 100, width: 200, height: 200 } },
     status: 'published',
     worldId: { nullifier_hash: '0x1234...mock...hash' },
-    filecoin: { cid: 'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi', uploadDate: new Date().toISOString() }
+    filecoin: { cid: 'bafkreicgw26pklnri5nydweqstekxwsfk46sqbbu5lquziiafj6knjvtke', uploadDate: new Date().toISOString() }
   },
   {
     id: 'mock-2',
@@ -21,7 +21,7 @@ const reports: PotholeReport[] = [
     detection: { confidence: 0.88, boundingBox: { x: 150, y: 150, width: 180, height: 180 } },
     status: 'published',
     worldId: { nullifier_hash: '0xabcd...mock...hash' },
-    filecoin: { cid: 'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi', uploadDate: new Date().toISOString() }
+    filecoin: { cid: 'bafkreicgw26pklnri5nydweqstekxwsfk46sqbbu5lquziiafj6knjvtke', uploadDate: new Date().toISOString() }
   },
   {
     id: 'mock-3',
@@ -48,7 +48,7 @@ const reports: PotholeReport[] = [
     detection: { confidence: 0.98, boundingBox: { x: 200, y: 200, width: 150, height: 150 } },
     status: 'published',
     worldId: { nullifier_hash: '0xcafe...mock...hash' },
-    filecoin: { cid: 'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi', uploadDate: new Date().toISOString() }
+    filecoin: { cid: 'bafkreicgw26pklnri5nydweqstekxwsfk46sqbbu5lquziiafj6knjvtke', uploadDate: new Date().toISOString() }
   }
 ];
 
