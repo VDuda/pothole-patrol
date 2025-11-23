@@ -680,8 +680,8 @@ export default function Dashcam() {
              />
         )}
 
-        {/* AI Bounding Box Overlay - HIDDEN as per user request to check efficiency */}
-        {/* {isPatrolling && detections.map((det, i) => (
+        {/* AI Bounding Box Overlay */}
+        {isPatrolling && detections.map((det, i) => (
           <div
             key={i}
             className="absolute border-2 border-safety-yellow bg-safety-yellow/20 z-10 pointer-events-none"
@@ -696,7 +696,7 @@ export default function Dashcam() {
               {(det.confidence * 100).toFixed(0)}%
             </div>
           </div>
-        ))} */}
+        ))}
 
         {/* Source Selector & Switch Camera */}
         <div className="absolute top-4 right-4 flex flex-col gap-3 z-10">
