@@ -585,7 +585,11 @@ export default function Dashcam() {
         const reportWithProof = {
           ...report,
           worldId: worldIdProof,
-          status: isVerified ? 'verified' : 'pending',
+          status: isVerified && folderCid ? 'published' : (isVerified ? 'verified' : 'pending'),
+          filecoin: folderCid ? {
+            cid: folderCid,
+            uploadDate: new Date().toISOString(),
+          } : undefined,
           session: {
             id: startTime,
             index: uploadedCount + 1,
