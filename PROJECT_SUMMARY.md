@@ -97,6 +97,57 @@ Requires keys for World ID, Mapbox, and Lighthouse Storage. See `ENV_SETUP.md`.
 
 ---
 
-## 👥 Team
+## 📈 Impact Potential
 
-Built with ❤️ for **ETHGlobal Buenos Aires 2025**
+### For Cities
+- **Real-time Monitoring:** Replaces expensive manual surveying vans with a fleet of citizen sensors.
+- **Predictive Maintenance:** Detects small cracks before they become massive craters, saving millions in repair costs.
+- **Transparency:** Creates an undeniable public record of infrastructure neglect.
+
+### For Researchers (DeSci)
+- **Open Dataset:** Provides a massive, standardized dataset for training urban-focused AI models.
+- **Climate Analysis:** Correlation data between weather patterns, traffic load, and road degradation.
+
+### For Citizens
+- **Safer Roads:** Direct contribution to repairing dangerous driving conditions.
+- **Data Ownership:** Users own the data they collect, rather than it being siloed by tech giants.
+
+---
+
+## 🛡️ Security & Privacy
+
+### Data Privacy
+- **Local Processing:** Images are processed on the device. Only detections (metadata + cropped evidence) are uploaded.
+- **No PII:** We collect GPS and Pothole data. No faces, no license plates.
+
+### Sybil Resistance
+- **World ID:** The cornerstone of our trust model. One human = one trusted sensor node.
+- **Cryptographic Proofs:** Every byte of data is signed and verifiable.
+
+---
+
+## 🤝 Contributing
+
+This is a hackathon project, but we are building for the long term. Contributions are welcome!
+
+### Areas for Contribution
+- **AI:** Improving the YOLOv8 model for different road surfaces (gravel, cement).
+- **Mobile:** Porting the web app to a native React Native module for background sensing.
+- **Smart Contracts:** Designing the tokenomics and staking registry.
+
+---
+
+## 🔗 Links
+
+- **GitHub**: [github.com/yourusername/pothole-patrol](https://github.com/yourusername/pothole-patrol)
+- **Demo**: [pothole-patrol.vercel.app](https://pothole-patrol.vercel.app)
+- **World ID Docs**: [developer.worldcoin.org](https://developer.worldcoin.org/)
+- **Filecoin Docs**: [docs.filecoin.io](https://docs.filecoin.io/)
+
+---
+
+**Total Potential Prize Money: $16,500**
+
+🏆 World: Best Mini App - $6,500
+💾 Filecoin: Best Storage Innovation - $5,000
+🧪 Protocol Labs: Open Data & Research - $5,000
