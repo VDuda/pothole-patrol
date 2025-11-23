@@ -32,7 +32,7 @@ export async function initializeModel(
     ort.env.logLevel = 'error'; // Suppress non-critical logs (like CPU vendor warnings)
     
     session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ['wasm'],
+      executionProviders: ['webgl', 'wasm'],
       graphOptimizationLevel: 'all',
     });
     
@@ -49,6 +49,9 @@ export function isModelLoaded(): boolean {
   return session !== null;
 }
 
+let preprocessCanvas: HTMLCanvasElement | null = null;
+let preprocessCtx: CanvasRenderingContext2D | null = null;
+
 /**
  * Preprocess image for YOLO inference
  * @param imageElement - HTML Image or Video element
@@ -59,17 +62,21 @@ function preprocessImage(
   imageElement: HTMLImageElement | HTMLVideoElement,
   targetSize: number = 640
 ): ort.Tensor {
-  // Create canvas for preprocessing
-  const canvas = document.createElement('canvas');
-  canvas.width = targetSize;
-  canvas.height = targetSize;
-  const ctx = canvas.getContext('2d')!;
+  // Create or reuse canvas for preprocessing
+  if (!preprocessCanvas || preprocessCanvas.width !== targetSize || preprocessCanvas.height !== targetSize) {
+    preprocessCanvas = document.createElement('canvas');
+    preprocessCanvas.width = targetSize;
+    preprocessCanvas.height = targetSize;
+    preprocessCtx = preprocessCanvas.getContext('2d', { willReadFrequently: true });
+  }
+
+  if (!preprocessCtx) throw new Error('Failed to get 2d context');
   
   // Draw and resize image
-  ctx.drawImage(imageElement, 0, 0, targetSize, targetSize);
+  preprocessCtx.drawImage(imageElement, 0, 0, targetSize, targetSize);
   
   // Get image data
-  const imageData = ctx.getImageData(0, 0, targetSize, targetSize);
+  const imageData = preprocessCtx.getImageData(0, 0, targetSize, targetSize);
   const pixels = imageData.data;
   
   // Convert to RGB and normalize (0-255 -> 0-1)
