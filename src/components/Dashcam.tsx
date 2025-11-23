@@ -61,6 +61,13 @@ export default function Dashcam() {
 
   // Patrol State
   const [isPatrolling, setIsPatrolling] = useState(false);
+  const isPatrollingRef = useRef(false);
+
+  // Sync ref for detection loop
+  useEffect(() => {
+    isPatrollingRef.current = isPatrolling;
+  }, [isPatrolling]);
+  
   const [sessionReports, setSessionReports] = useState<PotholeReport[]>([]);
   const [showSummary, setShowSummary] = useState(false);
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
@@ -101,7 +108,7 @@ export default function Dashcam() {
 
   // Optimized Detection Loop
   const runDetectionLoop = useCallback(async () => {
-    if (!isPatrolling || !videoRef.current || !modelReady || !isStreaming) {
+    if (!isPatrollingRef.current || !videoRef.current || !modelReady || !isStreaming) {
       // If stopped, clear loop
       if (animationFrameRef.current) clearTimeout(animationFrameRef.current);
       return;
@@ -114,6 +121,9 @@ export default function Dashcam() {
       // Run inference
       const currentDetections = await detectPotholes(videoRef.current, confidenceThreshold);
       
+      // Check if stopped while inferencing
+      if (!isPatrollingRef.current) return;
+
       if (currentDetections.length > 0) {
         console.log(`🎯 AI Detected ${currentDetections.length} objects!`, currentDetections[0]);
       }
@@ -126,20 +136,8 @@ export default function Dashcam() {
           (prev.confidence > current.confidence) ? prev : current
         );
 
-        // Throttle geolocation/report creation to avoid spamming main thread
-        // We only log if we haven't logged recently (debounce done in state setter)
-        // For better performance, we could move this check outside the render loop logic
-        
         // Basic timestamp check to see if we should even attempt to log
         const now = Date.now();
-        // Note: Accessing state in callback requires refs or dependency, but we use functional update for sessionReports
-        // To optimize, we can check a ref for last log time
-        
-        // For MVP, we do the heavy lifting of logging here, but maybe we should debounce it more aggressively
-        // Let's stick to the previous logic which had a 2000ms debounce inside the setter
-        
-        // Optimization: Only get location if we are going to log (check debounce first?)
-        // Hard to check debounce without state access. Let's proceed.
         
         // Get location
         let position: { coords: { latitude: number; longitude: number } } | null = null;
@@ -160,6 +158,9 @@ export default function Dashcam() {
                 }
             };
         }
+        
+        // Check if stopped while getting location
+        if (!isPatrollingRef.current) return;
 
         if (position) {
             const { latitude, longitude } = position.coords;
@@ -189,7 +190,9 @@ export default function Dashcam() {
     }
 
     // Schedule next loop with delay (500ms) to prevent UI freeze
-    animationFrameRef.current = window.setTimeout(runDetectionLoop, 500);
+    if (isPatrollingRef.current) {
+      animationFrameRef.current = window.setTimeout(runDetectionLoop, 500);
+    }
   }, [isPatrolling, modelReady, isStreaming, confidenceThreshold]);
 
   // Secret Manual Capture

@@ -201,16 +201,28 @@ export async function detectPotholes(
 
 /**
  * Capture a frame from video element as data URL
+ * Optimized: Limits max dimension to 1280px to prevent main-thread freeze on high-res cameras
  * @param videoElement - HTML Video element
  * @returns Data URL of the captured frame
  */
 export function captureFrame(videoElement: HTMLVideoElement): string {
   const canvas = document.createElement('canvas');
-  canvas.width = videoElement.videoWidth;
-  canvas.height = videoElement.videoHeight;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(videoElement, 0, 0);
-  return canvas.toDataURL('image/jpeg', 0.9);
+  let width = videoElement.videoWidth;
+  let height = videoElement.videoHeight;
+  
+  // Resize to max 1280px width/height
+  const MAX_DIM = 1280;
+  if (width > MAX_DIM || height > MAX_DIM) {
+    const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
+    width *= scale;
+    height *= scale;
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(videoElement, 0, 0, width, height);
+  return canvas.toDataURL('image/jpeg', 0.85); // Slightly lower quality for speed
 }
 
 /**
