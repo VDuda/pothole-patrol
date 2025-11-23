@@ -81,6 +81,21 @@ export default function Dashcam() {
     }
   };
 
+  const testModelWithSample = async () => {
+    try {
+        const img = new Image();
+        img.src = '/dashresult.jpeg';
+        img.onload = async () => {
+            console.log('Running test inference on sample image...');
+            const results = await detectPotholes(img as any, 0.1); // Low threshold for test
+            console.log('Test results:', results);
+            alert(`Diagnostics:\nModel Loaded: ${modelReady}\nDetections on Sample: ${results.length}\nConfidence: ${results[0]?.confidence.toFixed(2) || 'N/A'}`);
+        };
+    } catch (e: any) {
+        alert(`Test failed: ${e.message}`);
+    }
+  };
+
   // Optimized Detection Loop
   const runDetectionLoop = useCallback(async () => {
     if (!isPatrolling || !videoRef.current || !modelReady || !isStreaming) {
@@ -787,6 +802,14 @@ export default function Dashcam() {
                     >
                         <RefreshCw className="w-4 h-4" />
                         RELOAD AI MODEL
+                    </button>
+
+                    <button 
+                        onClick={testModelWithSample}
+                        className="w-full py-3 bg-asphalt border border-white/10 hover:border-white/30 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors text-blue-400"
+                    >
+                        <Activity className="w-4 h-4" />
+                        RUN DIAGNOSTIC TEST
                     </button>
 
                     <div className="pt-4 border-t border-white/10">
