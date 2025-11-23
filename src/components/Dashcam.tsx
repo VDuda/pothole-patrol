@@ -471,7 +471,8 @@ export default function Dashcam() {
         if (startTime) {
             sessionStore.updateSession(`session-${startTime}`, {
                 status: 'uploaded',
-                filecoinCid: folderCid
+                filecoinCid: folderCid,
+                walletAddress: walletAddress
             });
         }
 

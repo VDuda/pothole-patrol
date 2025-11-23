@@ -10,6 +10,7 @@ export interface PatrolSession {
   potholeCount: number;
   status: 'verified' | 'pending_upload' | 'uploaded';
   filecoinCid?: string;
+  walletAddress?: string;
 }
 
 export const sessionStore = {
