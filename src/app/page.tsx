@@ -20,7 +20,7 @@ export default function Home() {
             </div>
             
             <div className="flex justify-center mb-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
-                <img src="/logo.png" alt="Pothole Patrol Logo" className="w-24 h-24 rounded-2xl shadow-2xl shadow-safety-yellow/20" />
+                <img src="/logo.png" alt="Pothole Patrol Logo" className="w-48 h-48 rounded-3xl shadow-2xl shadow-safety-yellow/20" />
             </div>
 
             <h1 className="text-6xl md:text-8xl font-bold mb-6 tracking-tight leading-none animate-in fade-in slide-in-from-bottom-8 duration-700 delay-100">
