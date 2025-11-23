@@ -127,7 +127,7 @@ export default function ReportCard({
         </div>
 
         {/* Action Button */}
-        {report.status === 'verified' && onPublish && (
+        {report.status === 'verified' && !report.filecoin && onPublish && (
           <button
             onClick={() => onPublish(report.id)}
             disabled={isPublishing}
