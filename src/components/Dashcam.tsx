@@ -429,14 +429,19 @@ export default function Dashcam() {
   const stopPatrol = () => {
     console.log('Stopping patrol. Session count:', sessionReports.length);
     setIsPatrolling(false);
-    if (startTime) {
-      // Save session to local history (even if empty)
-      sessionStore.saveSession(sessionReports, startTime);
-      setShowSummary(true);
-    } else {
-      console.error('Stop Patrol called but startTime is null?');
-      // Fallback to show summary anyway just in case
-      setShowSummary(true);
+    
+    try {
+        if (startTime) {
+            // Save session to local history (even if empty)
+            sessionStore.saveSession(sessionReports, startTime);
+        } else {
+            console.error('Stop Patrol called but startTime is null?');
+        }
+    } catch (e) {
+        console.error('Failed to save session:', e);
+    } finally {
+        // Always show summary even if save fails
+        setShowSummary(true);
     }
   };
 
