@@ -100,40 +100,58 @@ export default function MapComponent({
       const popup = new mapboxgl.Popup({ 
         offset: 25,
         className: 'industrial-popup',
-        closeButton: false
+        closeButton: false,
+        maxWidth: '320px'
       }).setHTML(`
-        <div class="p-3 bg-concrete text-white rounded-lg shadow-xl border border-white/10 min-w-[200px]">
-          <div class="flex items-center gap-2 mb-2 pb-2 border-b border-white/10">
-            <span class="text-lg">
-                ${report.status === 'published' ? '✅' : report.status === 'verified' ? '🔵' : '⏳'}
-            </span>
-            <div>
-                <p class="font-bold text-xs uppercase tracking-wider text-gray-300">
-                    ${report.status}
-                </p>
-                <p class="text-[10px] text-gray-500 font-mono">
-                    ${new Date(report.timestamp).toLocaleTimeString()}
-                </p>
+        <div class="bg-concrete text-white rounded-lg shadow-2xl border border-white/10 overflow-hidden font-sans">
+          <div class="h-32 w-full bg-black relative group">
+            <img src="${report.image.dataUrl}" class="w-full h-full object-cover transition-opacity hover:opacity-90" alt="Pothole" />
+            <div class="absolute bottom-2 right-2 bg-black/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] text-safety-yellow font-bold border border-safety-yellow/30 font-mono shadow-lg">
+               ${(report.detection.confidence * 100).toFixed(0)}%
             </div>
           </div>
-          
-          <div class="space-y-1">
-             <div class="flex justify-between text-xs">
-                <span class="text-gray-500">Confidence</span>
-                <span class="font-mono font-bold text-safety-yellow">${(report.detection.confidence * 100).toFixed(0)}%</span>
-             </div>
-             ${report.worldId ? `
-                 <div class="flex justify-between text-xs">
-                    <span class="text-gray-500">World ID</span>
-                    <span class="font-mono text-blue-400">Verified</span>
-                 </div>
-             ` : ''}
-             ${report.filecoin ? `
-                 <div class="flex justify-between text-xs">
-                    <span class="text-gray-500">Storage</span>
-                    <span class="font-mono text-green-400">Filecoin</span>
-                 </div>
-             ` : ''}
+
+          <div class="p-3">
+            <div class="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
+              <span class="text-xl">
+                  ${report.status === 'published' ? '✅' : report.status === 'verified' ? '🔵' : '⏳'}
+              </span>
+              <div>
+                  <p class="font-bold text-xs uppercase tracking-wider text-white">
+                      ${report.status}
+                  </p>
+                  <p class="text-[10px] text-gray-400 font-mono">
+                      ${new Date(report.timestamp).toLocaleString()}
+                  </p>
+              </div>
+            </div>
+            
+            <div class="space-y-1.5">
+               <div class="flex items-center justify-between text-xs bg-black/20 p-1.5 rounded border border-white/5">
+                  <span class="text-gray-500 font-mono text-[10px]">LAT</span>
+                  <span class="font-mono text-gray-200 select-all">${report.location.latitude.toFixed(6)}</span>
+               </div>
+               <div class="flex items-center justify-between text-xs bg-black/20 p-1.5 rounded border border-white/5">
+                  <span class="text-gray-500 font-mono text-[10px]">LNG</span>
+                  <span class="font-mono text-gray-200 select-all">${report.location.longitude.toFixed(6)}</span>
+               </div>
+               
+               ${report.worldId ? `
+                   <div class="flex justify-between text-[10px] mt-2 pt-2 border-t border-white/5">
+                      <span class="text-gray-500">Verification</span>
+                      <span class="font-bold text-blue-400 flex items-center gap-1">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                        World ID
+                      </span>
+                   </div>
+               ` : ''}
+               ${report.filecoin ? `
+                   <div class="flex justify-between text-[10px]">
+                      <span class="text-gray-500">Storage</span>
+                      <span class="font-bold text-green-400">Filecoin</span>
+                   </div>
+               ` : ''}
+            </div>
           </div>
         </div>
       `);
