@@ -89,10 +89,16 @@ export default function Dashcam() {
     }
 
     try {
+      // Debug log to confirm loop is alive
+      // console.log('running detection loop...'); 
+
       // Run inference
-      // Note: detectPotholes is async. We wait for it, then schedule next frame.
       const currentDetections = await detectPotholes(videoRef.current, confidenceThreshold);
       
+      if (currentDetections.length > 0) {
+        console.log(`🎯 AI Detected ${currentDetections.length} objects!`, currentDetections[0]);
+      }
+
       setDetections(currentDetections);
       
       // Logging Logic (same as before but in this loop)
@@ -349,10 +355,15 @@ export default function Dashcam() {
 
   // Stop Patrol
   const stopPatrol = () => {
+    console.log('Stopping patrol. Session count:', sessionReports.length);
     setIsPatrolling(false);
     if (startTime) {
       // Save session to local history (even if empty)
       sessionStore.saveSession(sessionReports, startTime);
+      setShowSummary(true);
+    } else {
+      console.error('Stop Patrol called but startTime is null?');
+      // Fallback to show summary anyway just in case
       setShowSummary(true);
     }
   };

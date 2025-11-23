@@ -169,6 +169,7 @@ export async function detectPotholes(
   confidenceThreshold: number = 0.25
 ): Promise<Detection[]> {
   if (!session) {
+    console.warn('Model not initialized (session is null)');
     throw new Error('Model not initialized. Call initializeModel() first.');
   }
   
@@ -178,11 +179,12 @@ export async function detectPotholes(
     
     // Run inference
     const feeds: Record<string, ort.Tensor> = {};
-    // Dynamically get the input name (usually 'images' but best to be safe)
     const inputName = session.inputNames[0];
     feeds[inputName] = inputTensor;
     
+    // console.time('inference');
     const results = await session.run(feeds);
+    // console.timeEnd('inference');
     
     // Get output tensor
     const output = results[Object.keys(results)[0]];
