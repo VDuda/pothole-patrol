@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
     const { payload, action, signal } = (await req.json()) as IRequestPayload;
 
     // Get App ID from environment variable
-    const app_id = process.env.APP_ID as `app_${string}`;
+    // Fallback to NEXT_PUBLIC_WLD_APP_ID if APP_ID is not set (common in hackathons)
+    const app_id = (process.env.APP_ID || process.env.NEXT_PUBLIC_WLD_APP_ID) as `app_${string}`;
 
     if (!app_id) {
       return NextResponse.json(
