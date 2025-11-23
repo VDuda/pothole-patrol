@@ -55,6 +55,7 @@ export default function Dashcam() {
   const [patrolHistory, setPatrolHistory] = useState<PatrolSession[]>([]);
   const [showReview, setShowReview] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
 
   // Patrol State
   const [isPatrolling, setIsPatrolling] = useState(false);
@@ -513,6 +514,7 @@ export default function Dashcam() {
 
       // 3. Submit all reports to Backend API
       let uploadedCount = 0;
+      setUploadProgress({ current: 0, total: sessionReports.length });
       
       for (const report of sessionReports) {
         const formData = new FormData();
@@ -541,14 +543,16 @@ export default function Dashcam() {
 
         if (response.ok) {
           uploadedCount++;
+          setUploadProgress({ current: uploadedCount, total: sessionReports.length });
         }
       }
 
       if (uploadedCount > 0) {
         // Success!
-        alert(`Patrol Uploaded! ${uploadedCount} Verified Reports on Filecoin.\nCID: ${folderCid.slice(0, 10)}...`);
+        alert(`✅ Success! ${uploadedCount} reports verified & posted to Portal.\n\nFilecoin CID: ${folderCid.slice(0, 10)}...`);
         setSessionReports([]);
         setShowSummary(false);
+        setUploadProgress({ current: 0, total: 0 });
         // We are now back at the main screen where "Start Patrol" is visible
       } else {
         alert('Upload failed. Please check connection.');
@@ -558,6 +562,7 @@ export default function Dashcam() {
       setError(err.message || 'Failed to submit batch');
     } finally {
       setIsSubmittingBatch(false);
+      setUploadProgress({ current: 0, total: 0 });
     }
   };
 
@@ -612,17 +617,12 @@ export default function Dashcam() {
           className="w-full h-full object-cover"
         />
 
-        {/* AI Bounding Box Overlay */}
-        {isPatrolling && detections.map((det, i) => (
+        {/* AI Bounding Box Overlay - HIDDEN as per user request to check efficiency */}
+        {/* {isPatrolling && detections.map((det, i) => (
           <div
             key={i}
             className="absolute border-2 border-safety-yellow bg-safety-yellow/20 z-10 pointer-events-none"
             style={{
-              // NOTE: This logic assumes the video frame is squashed to 640x640 for inference.
-              // The box is relative to that 640x640.
-              // Since video is object-cover, we need to adjust if we want pixel-perfect accuracy.
-              // For MVP, simpler % mapping is acceptable but may drift on cropped edges.
-              // To improve, we'd need JS math to calculate the 'cover' crop rect.
               left: `${(det.boundingBox.x / 640) * 100}%`,
               top: `${(det.boundingBox.y / 640) * 100}%`,
               width: `${(det.boundingBox.width / 640) * 100}%`,
@@ -633,7 +633,7 @@ export default function Dashcam() {
               {(det.confidence * 100).toFixed(0)}%
             </div>
           </div>
-        ))}
+        ))} */}
 
         {/* Source Selector & Switch Camera */}
         <div className="absolute top-4 right-4 flex flex-col gap-3 z-10">
@@ -940,7 +940,9 @@ export default function Dashcam() {
               {isSubmittingBatch ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  VERIFYING...
+                  {uploadProgress.total > 0 
+                    ? `UPLOADING ${uploadProgress.current}/${uploadProgress.total}...`
+                    : 'VERIFYING...'}
                 </>
               ) : (
                 <>
