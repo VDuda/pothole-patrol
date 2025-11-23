@@ -32,7 +32,7 @@ export async function initializeModel(
     ort.env.logLevel = 'error'; // Suppress non-critical logs (like CPU vendor warnings)
     
     session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ['webgl', 'wasm'],
+      executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
     });
     
