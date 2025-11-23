@@ -959,7 +959,7 @@ export default function Dashcam() {
               disabled={isSubmittingBatch}
               className="w-full py-4 rounded-xl font-bold text-sm text-gray-300 hover:text-white transition-colors border border-white/10 hover:bg-white/5"
             >
-              START NEW PATROL
+              RETURN TO CAMERA
             </button>
             
             <button
