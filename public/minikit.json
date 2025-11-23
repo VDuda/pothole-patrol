@@ -1,0 +1,39 @@
+{
+  "name": "Pothole Patrol",
+  "short_name": "Pothole Patrol",
+  "description": "AI-powered dashcam for crowdsourcing verified road damage reports. Verified by World ID, anchored on Filecoin.",
+  "version": "1.0.0",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#2563eb",
+  "background_color": "#000000",
+  "start_url": "/dashcam",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["utilities", "navigation", "civic"],
+  "permissions": [
+    "camera",
+    "geolocation"
+  ],
+  "minikit": {
+    "version": "1.0",
+    "commands": [
+      "verify",
+      "pay",
+      "signMessage",
+      "walletAuth"
+    ],
+    "verification_level": "orb"
+  }
+}
