@@ -216,6 +216,25 @@ pothole-patrol/
 
 ---
 
+## ❓ Frequently Asked Questions (FAQs)
+
+**Q: How is this "On-Chain"?**
+> **A:** We use a Hybrid DePIN Architecture. The "state" of our network is the collection of CIDs stored on the **Filecoin** network. Instead of AWS S3, we use decentralized storage as our primary data layer. We treat Filecoin as an "Optimistic Rollup" for physical data—aggregating signed proofs off-chain (on-device) and settling the data availability layer on-chain.
+
+**Q: How do you prevent location spoofing?**
+> **A:** Currently, we rely on the device's secure GPS enclave. In the future, we will implement **Proof of Location** techniques (like Helium or Foam) or verify against trusted anchor points (like WiFi SSIDs) to triangulate and verify that the user is physically where they claim to be.
+
+**Q: Doesn't running AI on the phone kill the battery?**
+> **A:** We optimized heavily. We use a quantized **YOLOv8n** model running via **WebAssembly (WASM)** with a throttled inference loop (2 FPS). This keeps the heavy lifting on the Neural Engine of the phone rather than the main CPU, minimizing battery drain compared to streaming video to a server.
+
+**Q: How do you handle multiple people reporting the same pothole?**
+> **A:** We actually *want* redundancy for consensus. If multiple verified humans report the same GPS coordinate, the confidence score of that pothole increases. In our future tokenomics, we will use a diminishing returns curve where the first reporter gets the highest reward, and subsequent validators get a smaller staking reward.
+
+**Q: What is the business model?**
+> **A:** It's a classic DePIN flywheel. We bootstrap the network with token incentives (Drive-to-Earn). Once the data density is high enough, we monetize the API for **enterprise customers**: Logistics companies (route optimization), AV fleets (safety maps), and Municipalities (predictive maintenance). The revenue buys back and burns the protocol token.
+
+---
+
 ## 🔗 Resources
 
 *   [World Mini Apps Documentation](https://docs.world.org/mini-apps)
