@@ -1,26 +1,31 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-roboto-mono);
+
+  /* Pothole Patrol Palette */
+  --color-asphalt: #0F1115;
+  --color-safety-yellow: #FFD600;
+  --color-concrete: #2D2F36;
+  --color-signal-green: #00E676;
+  --color-alert-red: #FF3D00;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* 
+  Mobile Bounce Fix
+  Prevents the rubber-banding effect on iOS Safari
+*/
+html, body {
+  overscroll-behavior-y: none;
+  height: 100%;
+  background-color: var(--color-asphalt);
+  color: #ffffff;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Utilities */
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }

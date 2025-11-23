@@ -20,22 +20,32 @@ export function generateSignal(
 
 /**
  * Verify a pothole report with World ID using async command
- * @param latitude - GPS latitude
- * @param longitude - GPS longitude
- * @param timestamp - Unix timestamp
+ * @param latitude - GPS latitude (optional if custom signal provided)
+ * @param longitude - GPS longitude (optional if custom signal provided)
+ * @param timestamp - Unix timestamp (optional if custom signal provided)
+ * @param customSignal - Custom signal string (e.g. for batch verification)
  * @returns World ID verification payload
  */
 export async function verifyWithWorldID(
-  latitude: number,
-  longitude: number,
-  timestamp: number
+  latitude?: number,
+  longitude?: number,
+  timestamp?: number,
+  customSignal?: string
 ) {
   if (!MiniKit.isInstalled()) {
     throw new Error('MiniKit is not installed. Please open in World App.');
   }
 
   try {
-    const signal = generateSignal(latitude, longitude, timestamp);
+    let signal: string;
+    
+    if (customSignal) {
+      signal = customSignal;
+    } else if (latitude !== undefined && longitude !== undefined && timestamp !== undefined) {
+      signal = generateSignal(latitude, longitude, timestamp);
+    } else {
+      throw new Error('Insufficient data for signal generation');
+    }
     
     const verifyPayload: VerifyCommandInput = {
       action: 'report-pothole', // This must match your action ID in Developer Portal

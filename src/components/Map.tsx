@@ -37,7 +37,7 @@ export default function MapComponent({
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: 'mapbox://styles/mapbox/dark-v11', // Matches the industrial dark theme perfectly
       center: center,
       zoom: zoom,
     });
@@ -67,21 +67,28 @@ export default function MapComponent({
     reports.forEach((report) => {
       const el = document.createElement('div');
       el.className = 'marker';
-      el.style.width = '32px';
-      el.style.height = '32px';
+      el.style.width = '24px'; // Slightly smaller for cleaner look
+      el.style.height = '24px';
       el.style.cursor = 'pointer';
       
-      // Color based on status
-      const color =
-        report.status === 'published'
-          ? '#10b981' // green
-          : report.status === 'verified'
-          ? '#3b82f6' // blue
-          : '#6b7280'; // grey
+      // Industrial Palette Colors
+      // Pending: Gray/White
+      // Verified: Blue (World ID)
+      // Published: Green (Filecoin)
+      let color = '#9ca3af'; // Gray 400 (Pending)
+      let pulseClass = '';
 
+      if (report.status === 'published') {
+        color = '#00E676'; // Signal Green
+      } else if (report.status === 'verified') {
+        color = '#3b82f6'; // Blue 500
+      }
+
+      // SVG Marker
       el.innerHTML = `
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="${color}" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="2"/>
+          <circle cx="12" cy="12" r="4" fill="${color}"/>
         </svg>
       `;
 
@@ -89,21 +96,45 @@ export default function MapComponent({
         .setLngLat([report.location.longitude, report.location.latitude])
         .addTo(map.current!);
 
-      // Create popup
-      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
-        <div class="p-2">
-          <p class="font-bold text-sm mb-1">
-            ${report.status === 'published' ? '✅' : report.status === 'verified' ? '🔵' : '⏳'} 
-            ${report.status.charAt(0).toUpperCase() + report.status.slice(1)}
-          </p>
-          <p class="text-xs text-gray-600 mb-2">
-            ${new Date(report.timestamp).toLocaleString()}
-          </p>
-          <p class="text-xs">
-            Confidence: ${(report.detection.confidence * 100).toFixed(0)}%
-          </p>
-          ${report.worldId ? '<p class="text-xs text-green-600 mt-1">✓ World ID Verified</p>' : ''}
-          ${report.filecoin ? `<p class="text-xs text-blue-600 mt-1">📦 CID: ${report.filecoin.cid.slice(0, 12)}...</p>` : ''}
+      // Styled Popup
+      const popup = new mapboxgl.Popup({ 
+        offset: 25,
+        className: 'industrial-popup',
+        closeButton: false
+      }).setHTML(`
+        <div class="p-3 bg-concrete text-white rounded-lg shadow-xl border border-white/10 min-w-[200px]">
+          <div class="flex items-center gap-2 mb-2 pb-2 border-b border-white/10">
+            <span class="text-lg">
+                ${report.status === 'published' ? '✅' : report.status === 'verified' ? '🔵' : '⏳'}
+            </span>
+            <div>
+                <p class="font-bold text-xs uppercase tracking-wider text-gray-300">
+                    ${report.status}
+                </p>
+                <p class="text-[10px] text-gray-500 font-mono">
+                    ${new Date(report.timestamp).toLocaleTimeString()}
+                </p>
+            </div>
+          </div>
+          
+          <div class="space-y-1">
+             <div class="flex justify-between text-xs">
+                <span class="text-gray-500">Confidence</span>
+                <span class="font-mono font-bold text-safety-yellow">${(report.detection.confidence * 100).toFixed(0)}%</span>
+             </div>
+             ${report.worldId ? `
+                 <div class="flex justify-between text-xs">
+                    <span class="text-gray-500">World ID</span>
+                    <span class="font-mono text-blue-400">Verified</span>
+                 </div>
+             ` : ''}
+             ${report.filecoin ? `
+                 <div class="flex justify-between text-xs">
+                    <span class="text-gray-500">Storage</span>
+                    <span class="font-mono text-green-400">Filecoin</span>
+                 </div>
+             ` : ''}
+          </div>
         </div>
       `);
 
@@ -121,24 +152,24 @@ export default function MapComponent({
   }, [reports, isLoaded, onReportClick]);
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full bg-asphalt">
       <div ref={mapContainer} className="w-full h-full" />
       
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 text-sm">
-        <p className="font-bold mb-2">Legend</p>
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-green-500"></div>
-            <span>Published (Filecoin)</span>
+      {/* Industrial Legend */}
+      <div className="absolute bottom-6 left-6 bg-concrete/90 backdrop-blur-md rounded-xl border border-white/10 p-4 shadow-2xl z-10">
+        <p className="font-bold text-xs text-gray-400 uppercase tracking-wider mb-3">Network Status</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(0,230,118,0.5)]"></div>
+            <span className="text-xs font-bold text-white">Immutable (Filecoin)</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-            <span>Verified (World ID)</span>
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+            <span className="text-xs font-medium text-gray-300">Verified (World ID)</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-gray-500"></div>
-            <span>Pending</span>
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-gray-500"></div>
+            <span className="text-xs font-medium text-gray-500">Pending Review</span>
           </div>
         </div>
       </div>

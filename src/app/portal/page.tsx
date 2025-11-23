@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Download, RefreshCw, Database } from 'lucide-react';
+import { Download, RefreshCw, Database, Activity, Check, Clock, Upload } from 'lucide-react';
 import Map from '@/components/Map';
 import ReportCard from '@/components/ReportCard';
 import { PotholeReport, JSONLDDataset } from '@/types/report';
@@ -146,22 +146,27 @@ export default function PortalPage() {
   const publishedReports = reports.filter((r) => r.status === 'published');
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-asphalt text-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">🚧 Pothole Patrol Portal</h1>
-            <p className="text-sm opacity-90">Open Data Dashboard</p>
+      <div className="bg-concrete border-b border-white/5 p-4 shadow-lg z-20">
+        <div className="max-w-[1920px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 bg-gradient-to-br from-safety-yellow to-yellow-600 rounded-lg flex items-center justify-center text-asphalt shadow-lg shadow-yellow-500/20">
+               <Activity className="w-6 h-6" />
+             </div>
+             <div>
+                <h1 className="text-xl font-bold tracking-tight">Pothole Patrol</h1>
+                <p className="text-xs text-gray-400 font-mono uppercase tracking-wider">Open Data Portal</p>
+             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <button
               onClick={fetchReports}
               disabled={isLoading}
-              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 transition-colors"
+              className="px-4 py-2 bg-asphalt border border-white/10 hover:border-white/20 hover:bg-white/5 rounded-lg flex items-center gap-2 transition-all text-sm font-medium"
             >
-              <RefreshCw className={cn('w-5 h-5', isLoading && 'animate-spin')} />
+              <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
               Refresh
             </button>
             
@@ -169,13 +174,13 @@ export default function PortalPage() {
               onClick={handleExport}
               disabled={publishedReports.length === 0}
               className={cn(
-                'px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors',
+                'px-4 py-2 rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-lg',
                 publishedReports.length > 0
-                  ? 'bg-green-500 hover:bg-green-600 text-white'
-                  : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                  ? 'bg-safety-yellow text-asphalt hover:bg-yellow-400 hover:scale-105'
+                  : 'bg-concrete text-gray-500 cursor-not-allowed border border-white/5'
               )}
             >
-              <Download className="w-5 h-5" />
+              <Download className="w-4 h-4" />
               Export Knowledge Graph
             </button>
           </div>
@@ -183,54 +188,55 @@ export default function PortalPage() {
       </div>
 
       {/* Stats Bar */}
-      <div className="bg-white border-b border-gray-200 p-4">
-        <div className="max-w-7xl mx-auto grid grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-gray-900">{reports.length}</div>
-            <div className="text-sm text-gray-600">Total Reports</div>
+      <div className="bg-concrete/50 border-b border-white/5 backdrop-blur-sm">
+        <div className="max-w-[1920px] mx-auto grid grid-cols-4 divide-x divide-white/5">
+          <div className="p-4 flex flex-col items-center">
+            <div className="text-2xl font-bold text-white font-mono">{reports.length}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Total Reports</div>
           </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-gray-500">{pendingReports.length}</div>
-            <div className="text-sm text-gray-600">Pending</div>
+          <div className="p-4 flex flex-col items-center">
+            <div className="text-2xl font-bold text-gray-400 font-mono">{pendingReports.length}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Pending</div>
           </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-blue-600">{verifiedReports.length}</div>
-            <div className="text-sm text-gray-600">Verified</div>
+          <div className="p-4 flex flex-col items-center">
+            <div className="text-2xl font-bold text-blue-400 font-mono">{verifiedReports.length}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Verified</div>
           </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-green-600">{publishedReports.length}</div>
-            <div className="text-sm text-gray-600">Published</div>
+          <div className="p-4 flex flex-col items-center">
+            <div className="text-2xl font-bold text-green-400 font-mono">{publishedReports.length}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Published</div>
           </div>
         </div>
       </div>
 
       {/* Error Banner */}
       {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4">
-          <p className="font-medium">{error}</p>
+        <div className="bg-red-500/10 border-l-4 border-red-500 text-red-400 p-4">
+          <p className="font-medium text-sm">{error}</p>
         </div>
       )}
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar - Report List */}
-        <div className="w-96 bg-white border-r border-gray-200 overflow-y-auto">
-          <div className="p-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <Database className="w-5 h-5" />
-              Reports Feed
+        <div className="w-[400px] bg-asphalt border-r border-white/5 overflow-y-auto flex flex-col">
+          <div className="p-4 border-b border-white/5 bg-concrete/30 sticky top-0 backdrop-blur-md z-10">
+            <h2 className="text-sm font-bold text-gray-300 flex items-center gap-2 uppercase tracking-wider">
+              <Database className="w-4 h-4" />
+              Incoming Feed
             </h2>
           </div>
           
-          <div className="p-4 space-y-4">
+          <div className="p-4 space-y-4 flex-1">
             {isLoading && reports.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
-                Loading reports...
+              <div className="text-center py-12 text-gray-500">
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 opacity-50" />
+                <p className="text-xs font-mono uppercase">Syncing Node...</p>
               </div>
             ) : reports.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No reports yet. Start using the dashcam!
+              <div className="text-center py-12 text-gray-500 border-2 border-dashed border-white/5 rounded-xl">
+                <p className="text-sm">No reports yet.</p>
+                <p className="text-xs mt-1 opacity-50">Start the dashcam to begin.</p>
               </div>
             ) : (
               reports.map((report) => (
@@ -246,7 +252,7 @@ export default function PortalPage() {
         </div>
 
         {/* Map View */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative bg-gray-900">
           <Map
             reports={reports}
             onReportClick={setSelectedReport}

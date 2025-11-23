@@ -155,9 +155,14 @@ export async function sendTransaction(
 
   try {
     const txPayload = {
-      to: to,
-      value: value,
-      data: data,
+      transaction: [{
+        address: to,
+        abi: [], // ABI is required for some implementations, passing empty for raw data transaction
+        functionName: '',
+        args: [],
+        value: value,
+        data: data, // raw data if supported, otherwise this might need ABI encoding
+      }],
     };
 
     const { finalPayload } = await MiniKit.commandsAsync.sendTransaction(txPayload);

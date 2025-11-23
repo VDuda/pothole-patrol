@@ -21,6 +21,11 @@ export interface PotholeReport {
   };
   worldId?: any; // World ID verification payload
   status: 'pending' | 'verified' | 'published';
+  session?: {
+    id: number;
+    index: number;
+    total: number;
+  };
   filecoin?: {
     cid: string;
     uploadDate: string;
