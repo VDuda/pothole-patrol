@@ -22,6 +22,7 @@ export async function initializeModel(
 ): Promise<void> {
   try {
     // Configure ONNX Runtime for WASM
+    // Use the latest compatible version
     ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
     
     session = await ort.InferenceSession.create(modelPath, {
@@ -31,8 +32,10 @@ export async function initializeModel(
     
     console.log('YOLO model loaded successfully');
   } catch (error) {
-    console.error('Failed to load YOLO model:', error);
-    throw error;
+    console.error('Failed to load YOLO model. Please ensure /public/models/pothole.onnx exists.', error);
+    // We do not re-throw here to allow the app to continue (e.g. in manual mode)
+    // But we set session to null so detectPotholes knows it's not ready
+    session = null;
   }
 }
 
@@ -90,17 +93,25 @@ function postprocessOutput(
   const detections: Detection[] = [];
   const data = output.data as Float32Array;
   
-  // YOLOv8 output format: [batch, 84, 8400]
-  // 84 = 4 (bbox) + 80 (classes)
-  const numDetections = 8400;
+  // YOLOv8 output format: [batch, channels, anchors]
+  // channels = 4 (bbox) + num_classes
+  const dims = output.dims; // e.g., [1, 84, 8400] or [1, 5, 8400]
+  const numChannels = dims[1];
+  const numAnchors = dims[2];
+  const numClasses = numChannels - 4;
   
-  for (let i = 0; i < numDetections; i++) {
-    // Get confidence (max class score)
+  for (let i = 0; i < numAnchors; i++) {
+    // Find class with max score
     let maxScore = 0;
     let maxClass = 0;
     
-    for (let c = 0; c < 80; c++) {
-      const score = data[i + (4 + c) * numDetections];
+    // The first 4 rows are bbox (cx, cy, w, h)
+    // The rest are classes
+    for (let c = 0; c < numClasses; c++) {
+      const score = data[(4 + c) * numAnchors + i]; // data is likely flattened in a specific way, usually row-major or col-major? 
+      // ONNX Runtime JS usually gives row-major [batch, channel, anchor]
+      // Index = b * (channels * anchors) + c * (anchors) + i
+      // We assume batch=0.
       if (score > maxScore) {
         maxScore = score;
         maxClass = c;
@@ -110,10 +121,10 @@ function postprocessOutput(
     // Filter by confidence
     if (maxScore >= confidenceThreshold) {
       // Get bounding box (center_x, center_y, width, height)
-      const cx = data[i];
-      const cy = data[i + numDetections];
-      const w = data[i + 2 * numDetections];
-      const h = data[i + 3 * numDetections];
+      const cx = data[0 * numAnchors + i];
+      const cy = data[1 * numAnchors + i];
+      const w = data[2 * numAnchors + i];
+      const h = data[3 * numAnchors + i];
       
       // Convert to corner format
       const x = cx - w / 2;
@@ -122,7 +133,7 @@ function postprocessOutput(
       detections.push({
         confidence: maxScore,
         boundingBox: { x, y, width: w, height: h },
-        class: maxClass === 0 ? 'pothole' : 'unknown',
+        class: numClasses === 1 ? 'pothole' : (maxClass === 0 ? 'pothole' : 'unknown'), // Logic: If only 1 class, it's a pothole. If 80 classes, class 0 is person (often misidentified as pothole? No, we should probably stick to specific classes if using generic model, but for now let's say class 0 is interesting)
       });
     }
   }

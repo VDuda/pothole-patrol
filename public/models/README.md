@@ -1,46 +1,27 @@
-# AI Models Directory
+# Pothole Detection Model
 
-## YOLOv8n Pothole Detection Model
+This directory should contain the ONNX model for pothole detection.
 
-Place your trained YOLOv8n ONNX model here as `pothole.onnx`.
+## Recommended Model: Pothole-Finetuned-YoloV8
+We recommend using the fine-tuned model by **cazzz307**.
 
-### Model Requirements
-- **Format**: ONNX (Open Neural Network Exchange)
-- **Architecture**: YOLOv8n (Nano variant for fast inference)
-- **Input**: 640x640 RGB image
-- **Output**: Bounding boxes with confidence scores
-- **Classes**: Pothole detection
+**How to get it:**
+1.  Visit the Hugging Face model page: [https://huggingface.co/cazzz307/Pothole-Finetuned-YoloV8](https://huggingface.co/cazzz307/Pothole-Finetuned-YoloV8)
+2.  Login and accept the access terms (it is a gated model).
+3.  Go to "Files and versions".
+4.  Download `best.onnx` (if available) OR download `best.pt`.
+5.  **If you downloaded `best.pt`**: You need to convert it to ONNX.
+    *   Install Ultralytics: `pip install ultralytics`
+    *   Run: `yolo export model=best.pt format=onnx`
+6.  Rename the resulting file to **`pothole.onnx`**.
+7.  Place it in this directory (`public/models/pothole.onnx`).
 
-### Getting the Model
+## Fallback: Generic YOLOv8n
+If you cannot access the specific pothole model, you can use a standard YOLOv8n model to test the pipeline (it will detect objects like people/cars instead of potholes).
+1.  Download `yolov8n.onnx` from [Ultralytics Assets](https://github.com/ultralytics/assets/releases).
+2.  Rename to `pothole.onnx` and place here.
 
-#### Option 1: Use Pre-trained Model
-Download a pre-trained pothole detection model from:
-- [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
-- [Roboflow Universe](https://universe.roboflow.com/)
-
-#### Option 2: Train Your Own
-1. Collect pothole images
-2. Annotate with bounding boxes
-3. Train using Ultralytics YOLOv8:
-   ```bash
-   pip install ultralytics
-   yolo train model=yolov8n.pt data=pothole.yaml epochs=100
-   yolo export model=runs/detect/train/weights/best.pt format=onnx
-   ```
-
-#### Option 3: Use Demo Model (For Testing)
-For hackathon testing, you can use a general object detection model:
-```bash
-# Download YOLOv8n ONNX
-wget https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.onnx -O pothole.onnx
-```
-
-### File Structure
-```
-public/
-└── models/
-    ├── README.md (this file)
-    └── pothole.onnx (your model - not included in git)
-```
-
-**Note**: The model file is gitignored to keep the repository size small. Each developer needs to add their own model file.
+## Application Logic
+The application automatically detects the number of classes:
+*   **1 Class (Custom Model):** All detections are labeled "pothole".
+*   **80 Classes (Standard Model):** Class 0 (Person) is mapped to "pothole" for testing purposes (edit `src/lib/ai-model.ts` to change this).

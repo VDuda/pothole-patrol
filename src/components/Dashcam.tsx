@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, AlertCircle, Loader2, Video, SwitchCamera, Wifi, Globe } from 'lucide-react';
+import { Camera, AlertCircle, Loader2, Video, SwitchCamera, Wifi, Globe, MapPin, X, Check, Activity } from 'lucide-react';
 import Hls from 'hls.js';
-// import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob } from '@/lib/ai-model';
 import { verifyWithWorldID, isWorldApp } from '@/lib/worldid';
+import { initializeModel, detectPotholes, captureFrame, dataUrlToBlob } from '@/lib/ai-model';
 import { PotholeReport } from '@/types/report';
 import { cn } from '@/lib/utils';
+import { ethers } from 'ethers';
 
 type CameraFacing = 'user' | 'environment';
 type VideoSourceType = 'device' | 'network';
@@ -26,9 +27,10 @@ interface ConnectionStatus {
 export default function Dashcam() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  
+  // Camera State
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [cameraInitializing, setCameraInitializing] = useState(false);
   const [videoSource, setVideoSource] = useState<VideoSource>({
     type: 'device',
@@ -40,16 +42,100 @@ export default function Dashcam() {
     dashcam: false,
     internet: true
   });
+  const [modelReady, setModelReady] = useState(false);
 
-  // Auto-start camera when component mounts
+  // Patrol State
+  const [isPatrolling, setIsPatrolling] = useState(false);
+  const [sessionReports, setSessionReports] = useState<PotholeReport[]>([]);
+  const [showSummary, setShowSummary] = useState(false);
+  const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+
+  // Auto-start camera and load model when component mounts
   useEffect(() => {
     startCamera();
+    
+    // Initialize AI Model
+    const loadModel = async () => {
+      try {
+        await initializeModel();
+        setModelReady(true);
+        console.log('AI Model loaded');
+      } catch (err) {
+        console.error('Failed to load AI model:', err);
+        // We don't block the app, but AI features won't work
+      }
+    };
+    loadModel();
     
     // Cleanup on unmount
     return () => {
       stopCamera();
     };
   }, []);
+
+  // AI Detection Loop
+  useEffect(() => {
+    let detectionInterval: NodeJS.Timeout;
+
+    const runDetection = async () => {
+      if (!isPatrolling || !videoRef.current || !modelReady || !isStreaming) return;
+
+      try {
+        const detections = await detectPotholes(videoRef.current);
+        
+        if (detections.length > 0) {
+          // Found a pothole!
+          // We only take the highest confidence one for now to avoid spam
+          const bestDetection = detections.reduce((prev, current) => 
+            (prev.confidence > current.confidence) ? prev : current
+          );
+
+          // Get location
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 2000,
+            });
+          }).catch(() => null);
+
+          if (position) {
+            const { latitude, longitude } = position.coords;
+            const timestamp = Date.now();
+            const dataUrl = captureFrame(videoRef.current);
+            const blob = dataUrlToBlob(dataUrl);
+
+            const newReport: PotholeReport = {
+              id: `report-${timestamp}`,
+              timestamp,
+              location: { latitude, longitude },
+              image: { dataUrl, blob },
+              detection: bestDetection,
+              status: 'pending',
+            };
+
+            setSessionReports(prev => {
+              // Simple de-bouncing: don't add if we just added one < 2 seconds ago
+              const lastReport = prev[prev.length - 1];
+              if (lastReport && (timestamp - lastReport.timestamp < 2000)) {
+                return prev;
+              }
+              return [...prev, newReport];
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Detection loop error:', err);
+      }
+    };
+
+    if (isPatrolling && modelReady) {
+      // Run detection every 500ms
+      detectionInterval = setInterval(runDetection, 500);
+    }
+
+    return () => clearInterval(detectionInterval);
+  }, [isPatrolling, modelReady, isStreaming]);
 
   // Check internet connectivity
   useEffect(() => {
@@ -211,62 +297,86 @@ export default function Dashcam() {
     setTimeout(() => startCamera(), 100);
   };
 
-  // Capture frame from video
-  const captureFrame = (): string => {
-    if (!videoRef.current) return '';
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(videoRef.current, 0, 0);
-    return canvas.toDataURL('image/jpeg', 0.95);
+  // Start Patrol
+  const startPatrol = () => {
+    setIsPatrolling(true);
+    setSessionReports([]);
+    setStartTime(Date.now());
+    setShowSummary(false);
   };
 
-  // Convert data URL to Blob
-  const dataUrlToBlob = (dataUrl: string): Blob => {
-    const arr = dataUrl.split(',');
-    const mime = arr[0].match(/:(.*?);/)![1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
+  // Stop Patrol
+  const stopPatrol = () => {
+    setIsPatrolling(false);
+    if (sessionReports.length > 0) {
+      setShowSummary(true);
     }
-    return new Blob([u8arr], { type: mime });
   };
 
-  // Handle report submission
-  const handleReport = async () => {
-    if (!videoRef.current || isSubmitting) return;
-
-    setIsSubmitting(true);
-    setError(null);
+  // Simulate AI detection (Manual trigger for now)
+  const handleSimulateDetection = async () => {
+    if (!videoRef.current) return;
 
     try {
       // Get current location
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
-          timeout: 10000,
+          timeout: 5000,
         });
       });
 
       const { latitude, longitude } = position.coords;
       const timestamp = Date.now();
 
-      // Capture frame from video
-      const dataUrl = captureFrame();
+      // Capture frame
+      const dataUrl = captureFrame(videoRef.current!);
       const blob = dataUrlToBlob(dataUrl);
 
-      // Verify with World ID (if in World App)
+      // Create pending report
+      const newReport: PotholeReport = {
+        id: `report-${timestamp}`,
+        timestamp,
+        location: { latitude, longitude },
+        image: { dataUrl, blob },
+        detection: {
+          confidence: 0.85 + Math.random() * 0.14, // Simulated confidence
+          boundingBox: {
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 200,
+          },
+        },
+        status: 'pending',
+      };
+
+      setSessionReports(prev => [...prev, newReport]);
+      
+    } catch (err) {
+      console.error('Detection error:', err);
+    }
+  };
+
+  // Batch Verify & Submit
+  const handleBatchSubmit = async () => {
+    setIsSubmittingBatch(true);
+    setError(null);
+
+    try {
       let worldIdProof;
       let isVerified = false;
-      
-      if (isWorldApp()) {
+
+      // 1. Verify Session with World ID (if in World App)
+      if (isWorldApp() && startTime) {
         try {
-          // Get proof from World ID
-          const verifyData = await verifyWithWorldID(latitude, longitude, timestamp);
+          // Create a session signal: hash(startTime + count + firstLocation)
+          const firstLoc = sessionReports[0].location;
+          const sessionString = `${startTime}-${sessionReports.length}-${firstLoc.latitude.toFixed(4)}`;
+          const sessionSignal = ethers.id(sessionString);
+
+          // Get one proof for the entire batch
+          const verifyData = await verifyWithWorldID(undefined, undefined, undefined, sessionSignal);
           
           // Verify proof on server
           const verifyResponse = await fetch('/api/verify', {
@@ -287,64 +397,90 @@ export default function Dashcam() {
           }
         } catch (err: any) {
           console.error('World ID verification failed:', err);
-          // Continue without verification if user is not in World App
-          // or if verification fails
-          setError(`World ID verification failed: ${err.message}`);
+          setError(`Verification failed: ${err.message}`);
+          setIsSubmittingBatch(false);
+          return;
         }
       }
 
-      // Create report (AI detection will be added later)
-      const report: PotholeReport = {
-        id: `report-${timestamp}`,
-        timestamp,
-        location: { latitude, longitude },
-        image: { dataUrl, blob },
-        detection: {
-          confidence: 1.0, // Placeholder - will be from AI model later
-          boundingBox: {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-          },
-        },
-        worldId: worldIdProof,
-        status: isVerified ? 'verified' : 'pending',
-      };
+      // 2. Submit all reports
+      let uploadedCount = 0;
+      
+      for (const report of sessionReports) {
+        const formData = new FormData();
+        
+        // Attach the session proof to each report
+        const reportWithProof = {
+          ...report,
+          worldId: worldIdProof,
+          status: isVerified ? 'verified' : 'pending',
+          session: {
+            id: startTime,
+            index: uploadedCount + 1,
+            total: sessionReports.length
+          }
+        };
 
-      // Submit to backend
-      const formData = new FormData();
-      formData.append('report', JSON.stringify(report));
-      formData.append('image', blob, `pothole-${timestamp}.jpg`);
+        formData.append('report', JSON.stringify(reportWithProof));
+        if (report.image.blob) {
+          formData.append('image', report.image.blob, `pothole-${report.timestamp}.jpg`);
+        }
 
-      const response = await fetch('/api/reports', {
-        method: 'POST',
-        body: formData,
-      });
+        const response = await fetch('/api/reports', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to submit report');
+        if (response.ok) {
+          uploadedCount++;
+        }
       }
 
-      alert('Report submitted successfully! 🎉');
+      if (uploadedCount === sessionReports.length) {
+        alert(`Successfully verified and uploaded ${uploadedCount} reports! 🎉`);
+        setSessionReports([]);
+        setShowSummary(false);
+      } else {
+        alert(`Uploaded ${uploadedCount}/${sessionReports.length} reports. Some failed.`);
+      }
+
     } catch (err: any) {
-      setError(err.message || 'Failed to submit report');
-      console.error(err);
+      setError(err.message || 'Failed to submit batch');
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingBatch(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    if (confirm('Are you sure you want to discard these reports?')) {
+      setSessionReports([]);
+      setShowSummary(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-black">
+    <div className="flex flex-col h-[100dvh] bg-asphalt text-white relative overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-white">
-        <h1 className="text-2xl font-bold">🚧 Pothole Patrol</h1>
-        <p className="text-sm opacity-90">AI-Powered Dashcam</p>
+      <div className="bg-concrete border-b border-white/5 p-4 flex justify-between items-center z-10 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-safety-yellow rounded-md flex items-center justify-center text-asphalt">
+             <Activity className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold font-sans tracking-tight">Pothole Patrol</h1>
+            <p className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">AI Dashcam v1.0</p>
+          </div>
+        </div>
+        {isPatrolling && (
+          <div className="flex items-center gap-2 bg-alert-red/20 border border-alert-red/50 px-3 py-1.5 rounded-full animate-pulse">
+            <div className="w-2 h-2 bg-alert-red rounded-full shadow-[0_0_8px_rgba(255,61,0,0.8)]" />
+            <span className="text-[10px] font-bold text-alert-red uppercase tracking-wider">REC</span>
+          </div>
+        )}
       </div>
 
       {/* Camera View */}
-      <div className="flex-1 relative overflow-hidden bg-black">
+      <div className="flex-1 relative overflow-hidden bg-black" onClick={isPatrolling ? handleSimulateDetection : undefined}>
         <video
           ref={videoRef}
           autoPlay
@@ -353,198 +489,232 @@ export default function Dashcam() {
           className="w-full h-full object-cover"
         />
 
-        {/* Action Buttons */}
-        <div className="absolute top-4 right-4 flex gap-2 z-10">
-          {/* Source Selector Button */}
+        {/* Source Selector & Switch Camera */}
+        <div className="absolute top-4 right-4 flex flex-col gap-3 z-10">
           <button
             onClick={() => setShowSourceSelector(!showSourceSelector)}
-            className="bg-black/50 backdrop-blur-sm text-white p-3 rounded-full hover:bg-black/70 transition-colors"
-            aria-label="Select video source"
+            className="bg-black/40 backdrop-blur-md text-white p-3.5 rounded-full hover:bg-black/60 active:scale-95 transition-all border border-white/10"
           >
             <Camera className="w-6 h-6" />
           </button>
           
-          {/* Switch Camera Button (only for device cameras) */}
           {isStreaming && videoSource.type === 'device' && (
             <button
               onClick={switchCamera}
               disabled={cameraInitializing}
-              className="bg-black/50 backdrop-blur-sm text-white p-3 rounded-full hover:bg-black/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Switch camera"
+              className="bg-black/40 backdrop-blur-md text-white p-3.5 rounded-full hover:bg-black/60 active:scale-95 transition-all border border-white/10"
             >
               <SwitchCamera className="w-6 h-6" />
             </button>
           )}
         </div>
 
-        {/* Status Overlay */}
-        <div className="absolute top-4 left-4 right-16 flex flex-col gap-2">
+        {/* Info Overlay */}
+        <div className="absolute top-4 left-4 right-20 flex flex-col gap-2 pointer-events-none">
+           {/* Patrolling Stats */}
+           {isPatrolling && (
+            <div className="bg-asphalt/80 backdrop-blur-md text-white px-4 py-3 rounded-xl border border-white/10 shadow-lg w-fit">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-mono">Session Potholes</div>
+              <div className="flex items-center gap-3">
+                <MapPin className="w-5 h-5 text-safety-yellow" />
+                <span className="text-3xl font-bold font-mono tracking-tighter">{sessionReports.length}</span>
+              </div>
+            </div>
+          )}
+
           {cameraInitializing && (
-            <div className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="font-medium">Initializing camera...</span>
-            </div>
-          )}
-
-          {error && (
-            <div className="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-5 h-5" />
-              <span className="text-sm">{error}</span>
-            </div>
-          )}
-
-          {isStreaming && !error && (
-            <div className="bg-green-500/90 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-              {videoSource.type === 'device' ? (
-                <>
-                  <Video className="w-5 h-5" />
-                  <span className="font-medium">
-                    {videoSource.facingMode === 'environment' ? 'Back Camera' : 'Front Camera'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Wifi className="w-5 h-5" />
-                  <span className="font-medium">WiFi Dashcam</span>
-                </>
-              )}
+            <div className="bg-blue-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-lg flex items-center gap-2 w-fit">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-xs font-medium font-mono">INIT_CAMERA...</span>
             </div>
           )}
           
-          {/* Connection Status */}
-          {videoSource.type === 'network' && (
-            <div className="flex gap-2">
-              <div className={cn(
-                "px-3 py-1 rounded-lg text-xs flex items-center gap-1",
-                connectionStatus.dashcam ? "bg-green-500/90 text-white" : "bg-gray-500/90 text-white"
-              )}>
-                <Wifi className="w-4 h-4" />
-                {connectionStatus.dashcam ? 'Connected' : 'Disconnected'}
-              </div>
-              <div className={cn(
-                "px-3 py-1 rounded-lg text-xs flex items-center gap-1",
-                connectionStatus.internet ? "bg-green-500/90 text-white" : "bg-yellow-500/90 text-black"
-              )}>
-                <Globe className="w-4 h-4" />
-                {connectionStatus.internet ? 'Online' : 'Offline'}
-              </div>
+          {error && (
+            <div className="bg-alert-red/90 backdrop-blur-sm text-white px-4 py-3 rounded-lg flex items-start gap-3 border border-white/10">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <span className="text-xs font-medium leading-relaxed">{error}</span>
             </div>
           )}
         </div>
-        
-        {/* Source Selector Modal */}
-        {showSourceSelector && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-20 p-4">
-            <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full space-y-4">
-              <h3 className="text-xl font-bold text-white">Select Video Source</h3>
+
+        {/* Tap to Detect Hint */}
+        {isPatrolling && sessionReports.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-asphalt/60 px-6 py-3 rounded-full text-white/90 text-sm font-medium backdrop-blur-md border border-white/10 animate-pulse">
+              Tap screen to simulate detection
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Controls */}
+      <div className="bg-concrete p-6 pb-8 border-t border-white/5 shadow-[0_-4px_20px_rgba(0,0,0,0.4)]">
+        {!isStreaming && !cameraInitializing ? (
+          <button
+            onClick={() => startCamera()}
+            className="w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 bg-safety-yellow text-asphalt active:scale-[0.98] transition-transform shadow-lg shadow-safety-yellow/20"
+          >
+            <Camera className="w-6 h-6" />
+            ENABLE CAMERA
+          </button>
+        ) : isPatrolling ? (
+          <div className="flex gap-3">
+             <button
+              onClick={handleSimulateDetection}
+              className="flex-1 py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 bg-asphalt text-safety-yellow border border-safety-yellow/30 active:scale-[0.98] transition-transform"
+            >
+              <AlertCircle className="w-5 h-5" />
+              MARK (+1)
+            </button>
+            <button
+              onClick={stopPatrol}
+              className="flex-[2] py-4 rounded-xl font-bold text-base flex items-center justify-center gap-3 bg-alert-red text-white active:scale-[0.98] transition-transform shadow-lg shadow-alert-red/20"
+            >
+              <div className="w-3 h-3 bg-white rounded-sm" />
+              STOP PATROL
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={startPatrol}
+            className="w-full py-4 rounded-xl font-bold text-xl flex items-center justify-center gap-3 bg-safety-yellow text-asphalt active:scale-[0.98] transition-transform shadow-lg shadow-safety-yellow/20"
+          >
+            <div className="w-3 h-3 bg-alert-red rounded-full animate-pulse" />
+            START PATROL
+          </button>
+        )}
+      </div>
+
+      {/* Trip Summary Modal */}
+      {showSummary && (
+        <div className="absolute inset-0 z-50 bg-asphalt/95 backdrop-blur-xl flex flex-col p-6 animate-in slide-in-from-bottom-10 fade-in duration-300">
+          <div className="flex-1 flex flex-col items-center justify-center text-center space-y-8">
+            <div className="relative">
+              <div className="absolute inset-0 bg-safety-yellow/20 blur-2xl rounded-full" />
+              <div className="w-24 h-24 bg-gradient-to-br from-safety-yellow to-yellow-600 rounded-full flex items-center justify-center shadow-2xl relative z-10">
+                <Check className="w-12 h-12 text-asphalt" />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <h2 className="text-3xl font-bold text-white font-sans">Patrol Complete</h2>
+              <p className="text-gray-400 max-w-[200px] mx-auto leading-relaxed">Great job! Here are your session stats.</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
+              <div className="bg-concrete p-5 rounded-2xl border border-white/5">
+                <div className="text-4xl font-bold text-safety-yellow mb-1 font-mono tracking-tighter">{sessionReports.length}</div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Potholes</div>
+              </div>
+              <div className="bg-concrete p-5 rounded-2xl border border-white/5">
+                <div className="text-4xl font-bold text-white mb-1 font-mono tracking-tighter">
+                  {startTime ? Math.round((Date.now() - startTime) / 1000 / 60) : 0}
+                </div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Minutes</div>
+              </div>
+            </div>
+
+            <div className="w-full max-w-sm bg-concrete/50 border border-white/5 p-4 rounded-xl flex items-start gap-4 text-left">
+              <div className="p-2 bg-asphalt rounded-lg border border-white/10 shrink-0">
+                <Globe className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-sm text-gray-300">
+                <span className="font-bold text-white block mb-1">Verify once, sign all.</span>
+                Use World ID to sign all {sessionReports.length} reports in a single batch.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-auto space-y-3">
+            <button
+              onClick={handleBatchSubmit}
+              disabled={isSubmittingBatch}
+              className="w-full py-4 rounded-xl font-bold text-lg bg-white text-asphalt hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 active:scale-[0.99] transition-transform"
+            >
+              {isSubmittingBatch ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  VERIFYING...
+                </>
+              ) : (
+                <>
+                  VERIFY & UPLOAD BATCH
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={handleDiscard}
+              disabled={isSubmittingBatch}
+              className="w-full py-4 rounded-xl font-bold text-sm text-gray-500 hover:text-white transition-colors"
+            >
+              DISCARD REPORTS
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Source Selector Modal */}
+      {showSourceSelector && (
+         <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <div className="bg-concrete rounded-2xl p-6 max-w-md w-full space-y-6 border border-white/10 shadow-2xl">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-white">Video Source</h3>
+                <button onClick={() => setShowSourceSelector(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
               
               <div className="space-y-3">
                 <button
                   onClick={() => handleSourceChange('device')}
-                  className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-3 transition-colors"
+                  className="w-full p-4 bg-asphalt hover:bg-black text-white rounded-xl flex items-center gap-4 transition-all border border-white/5 hover:border-safety-yellow/50 group"
                 >
-                  <Camera className="w-6 h-6" />
+                  <div className="p-3 bg-concrete rounded-full text-gray-400 group-hover:text-safety-yellow group-hover:bg-safety-yellow/10 transition-colors">
+                    <Camera className="w-6 h-6" />
+                  </div>
                   <div className="text-left">
-                    <div className="font-bold">Phone Camera</div>
-                    <div className="text-sm opacity-80">Use your phone's camera</div>
+                    <div className="font-bold group-hover:text-safety-yellow transition-colors">Phone Camera</div>
+                    <div className="text-xs text-gray-500">Integrated device camera</div>
                   </div>
                 </button>
                 
                 <button
                   onClick={() => handleSourceChange('network')}
-                  className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-3 transition-colors"
+                  className="w-full p-4 bg-asphalt hover:bg-black text-white rounded-xl flex items-center gap-4 transition-all border border-white/5 hover:border-safety-yellow/50 group"
                 >
-                  <Wifi className="w-6 h-6" />
+                  <div className="p-3 bg-concrete rounded-full text-gray-400 group-hover:text-safety-yellow group-hover:bg-safety-yellow/10 transition-colors">
+                    <Wifi className="w-6 h-6" />
+                  </div>
                   <div className="text-left">
-                    <div className="font-bold">WiFi Dashcam</div>
-                    <div className="text-sm opacity-80">Connect to network camera</div>
+                    <div className="font-bold group-hover:text-safety-yellow transition-colors">WiFi Dashcam</div>
+                    <div className="text-xs text-gray-500">External network stream</div>
                   </div>
                 </button>
               </div>
               
               {videoSource.type === 'network' && (
-                <div className="space-y-3 pt-3 border-t border-gray-700">
+                <div className="space-y-3 pt-4 border-t border-white/10 animate-in fade-in slide-in-from-top-2">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Stream URL</label>
                   <input
                     type="text"
                     value={networkUrl}
                     onChange={(e) => setNetworkUrl(e.target.value)}
                     placeholder="http://192.168.1.1:8080/video.m3u8"
-                    className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none"
+                    className="w-full px-4 py-3 bg-asphalt text-white rounded-xl border border-white/10 focus:border-safety-yellow focus:outline-none font-mono text-sm"
                   />
-                  <div className="text-xs text-gray-400 space-y-1">
-                    <div>• HLS streams (.m3u8)</div>
-                    <div>• MJPEG streams</div>
-                    <div>• Direct video URLs</div>
-                  </div>
                   <button
                     onClick={handleNetworkConnect}
                     disabled={!networkUrl.trim()}
-                    className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-bold transition-colors"
+                    className="w-full py-3 bg-safety-yellow hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-500 text-asphalt rounded-xl font-bold transition-colors shadow-lg shadow-safety-yellow/10"
                   >
-                    Connect
+                    CONNECT STREAM
                   </button>
                 </div>
               )}
-              
-              <button
-                onClick={() => setShowSourceSelector(false)}
-                className="w-full py-2 text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Controls */}
-      <div className="bg-gray-900 p-4 space-y-3">
-        {!isStreaming && !cameraInitializing ? (
-          <button
-            onClick={() => startCamera()}
-            className="w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Camera className="w-6 h-6" />
-            Start Camera
-          </button>
-        ) : isStreaming ? (
-          <>
-            <button
-              onClick={handleReport}
-              disabled={isSubmitting}
-              className={cn(
-                'w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2',
-                isSubmitting
-                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                  : 'bg-purple-600 hover:bg-purple-700 text-white'
-              )}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  Submitting Report...
-                </>
-              ) : (
-                <>
-                  <Camera className="w-6 h-6" />
-                  Capture & Report Pothole
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={stopCamera}
-              className="w-full py-2 rounded-lg font-medium text-gray-400 hover:text-white"
-            >
-              Stop Camera
-            </button>
-          </>
-        ) : (
-          <div className="w-full py-4 text-center text-gray-400">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
