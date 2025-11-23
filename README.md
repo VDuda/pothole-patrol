@@ -222,6 +222,8 @@ pothole-patrol/
 *   [Filecoin Storage Documentation](https://docs.filecoin.io/builder-cookbook/data-storage/store-data)
 *   [Lighthouse SDK GitHub](https://github.com/lighthouse-web3/lighthouse-package)
 *   [YOLOv8 Documentation](https://docs.ultralytics.com/)
+*   [File Coin LLM Docs](https://docs.filecoin.io/llms.txt)
+*   [World LLM Docs](https://docs.world.org/llms-full.txt)
 
 ---
 
