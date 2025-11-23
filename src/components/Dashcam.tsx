@@ -54,6 +54,9 @@ export default function Dashcam() {
   const [showHistory, setShowHistory] = useState(false);
   const [patrolHistory, setPatrolHistory] = useState<PatrolSession[]>([]);
   const [showReview, setShowReview] = useState(false);
+  const [walletAddress, setWalletAddress] = useState('');
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [uploadStatus, setUploadStatus] = useState('');
   const [manualBox, setManualBox] = useState<{x: number, y: number} | null>(null);
 
   // Patrol State
@@ -487,6 +490,7 @@ export default function Dashcam() {
     try {
       let worldIdProof;
       let isVerified = false;
+      setUploadStatus('VERIFYING...');
 
       // 1. Verify Session with World ID (if in World App)
       if (isWorldApp() && startTime) {
@@ -521,6 +525,7 @@ export default function Dashcam() {
 
       // 2. Upload Session to Filecoin (Lighthouse)
       let folderCid = '';
+      setUploadStatus('ARCHIVING TO FILECOIN...');
       try {
         const apiKey = process.env.NEXT_PUBLIC_LIGHTHOUSE_API_KEY;
         if (!apiKey) throw new Error('Lighthouse API key missing');
@@ -564,6 +569,7 @@ export default function Dashcam() {
       // 3. Submit all reports to Backend API
       let uploadedCount = 0;
       setUploadProgress({ current: 0, total: sessionReports.length });
+      setUploadStatus('POSTING TO PORTAL...');
       
       for (const report of sessionReports) {
         const formData = new FormData();
@@ -1003,9 +1009,7 @@ export default function Dashcam() {
               {isSubmittingBatch ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  {uploadProgress.total > 0 
-                    ? `UPLOADING ${uploadProgress.current}/${uploadProgress.total}...`
-                    : 'VERIFYING...'}
+                  {uploadStatus || 'PROCESSING...'} {uploadProgress.total > 0 && uploadStatus.includes('PORTAL') ? `(${uploadProgress.current}/${uploadProgress.total})` : ''}
                 </>
               ) : (
                 <>
