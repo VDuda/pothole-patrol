@@ -39,6 +39,16 @@ const reports: PotholeReport[] = [
     image: { dataUrl: '/dashresult.jpeg' },
     detection: { confidence: 0.65, boundingBox: { x: 300, y: 300, width: 120, height: 120 } },
     status: 'pending',
+  },
+  {
+    id: 'mock-5',
+    timestamp: new Date().setHours(8, 10, 0, 0), // Today at 8:10 AM
+    location: { latitude: -34.590900, longitude: -58.396200 },
+    image: { dataUrl: '/dashresult.jpeg' },
+    detection: { confidence: 0.98, boundingBox: { x: 200, y: 200, width: 150, height: 150 } },
+    status: 'published',
+    worldId: { nullifier_hash: '0xcafe...mock...hash' },
+    filecoin: { cid: 'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi', uploadDate: new Date().toISOString() }
   }
 ];
 
